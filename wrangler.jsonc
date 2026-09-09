@@ -1,0 +1,36 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "newslang",
+  "main": "./worker/index.ts",
+  "compatibility_date": "2026-03-01",
+  // Serve from the default *.workers.dev subdomain (no custom domain configured yet).
+  "workers_dev": true,
+  "vars": {
+    "APP_ENV": "production"
+  },
+  // The static Vite build. `directory` is intentionally omitted: the
+  // @cloudflare/vite-plugin auto-populates it from the client build output.
+  // `single-page-application` serves index.html for any unmatched navigation,
+  // which is what a client-routed React SPA needs. `run_worker_first` lists the
+  // paths that boot the Worker; everything else is served from the assets layer.
+  "assets": {
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+  "env": {
+    "staging": {
+      "name": "newslang-staging",
+      "workers_dev": true,
+      "vars": {
+        "APP_ENV": "staging"
+      }
+    }
+  },
+  "observability": {
+    "logs": {
+      "enabled": true,
+      "invocation_logs": true
+    }
+  }
+}

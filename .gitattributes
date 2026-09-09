@@ -1,0 +1,9 @@
+# Source is text; guards against a stray NUL byte flipping a file to "binary" in git.
+*.ts text
+*.tsx text
+*.js text
+*.mjs text
+*.json text
+*.css text
+*.html text
+*.md text

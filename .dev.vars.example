@@ -1,0 +1,8 @@
+# Local-dev vars for `pnpm dev` (the Miniflare Worker). Copy to `.dev.vars` (gitignored) and fill in.
+# In local dev, `.dev.vars` overrides the `vars` in wrangler.jsonc.
+
+# Treat every local-dev host as development.
+APP_ENV=development
+
+# Placeholder auth secret — any non-empty string works locally; unused for now.
+JWT_SECRET=dev-secret-change-me

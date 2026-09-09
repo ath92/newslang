@@ -1,0 +1,158 @@
+name: Deploy to Staging
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Git ref to deploy
+        required: false
+        default: main
+  issue_comment:
+    types:
+      - created
+  pull_request_target:
+    types:
+      - opened
+      - reopened
+
+jobs:
+  comment-help:
+    name: Post staging deploy hint
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request_target'
+    permissions:
+      pull-requests: write
+    steps:
+      - uses: actions/github-script@v9
+        with:
+          script: |
+            const marker = "<!-- deploy-staging-hint -->";
+            const issueNumber = context.payload.pull_request.number;
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              per_page: 100,
+            });
+
+            if (comments.some((comment) => comment.body.includes(marker))) {
+              return;
+            }
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              body: [
+                marker,
+                "Need a staging deploy for this PR? Comment:",
+                "",
+                "`/deploy-staging`",
+                "",
+                "This only works for repository owners/members/collaborators, and only for PRs from this repository (not forks)."
+              ].join("\n")
+            });
+
+  deploy:
+    name: Build & Deploy (staging)
+    runs-on: ubuntu-latest
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'issue_comment' &&
+      github.event.issue.pull_request &&
+      startsWith(github.event.comment.body, '/deploy-staging'))
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+
+    steps:
+      - name: Resolve PR head
+        id: pr
+        if: github.event_name == 'issue_comment'
+        uses: actions/github-script@v9
+        with:
+          script: |
+            if (!context.payload.comment?.body) {
+              core.setFailed("No comment body found for deploy command.");
+              return;
+            }
+            const body = context.payload.comment.body.trim();
+            const commandMatch = /^\/deploy-staging(?:\s|$)/.test(body);
+            if (!commandMatch) {
+              core.setFailed("No /deploy-staging command found in comment.");
+              return;
+            }
+
+            const association = context.payload.comment.author_association;
+            const allowed = ["OWNER", "MEMBER", "COLLABORATOR"].includes(association);
+            if (!allowed) {
+              core.setFailed(`Unauthorized trigger from ${association}.`);
+              return;
+            }
+
+            const pullNumber = context.payload.issue.number;
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: pullNumber
+            });
+
+            if (pr.head.repo.full_name !== `${context.repo.owner}/${context.repo.repo}`) {
+              core.setFailed("Refusing to deploy from a fork pull request.");
+              return;
+            }
+
+            core.setOutput("ref", pr.head.sha);
+
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || steps.pr.outputs.ref }}
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate types
+        run: pnpm cf-typegen
+
+      - name: Build (staging)
+        run: pnpm build:staging
+
+      - name: Patch config for staging
+        run: node scripts/patch-staging-config.mjs
+
+      - name: Deploy to staging
+        id: deploy
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy --config dist/newslang/wrangler.json
+
+      - name: Comment on PR
+        if: always() && github.event_name == 'issue_comment'
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const outcome = '${{ steps.deploy.outcome }}';
+            const emoji = outcome === 'success' ? '✅' : '❌';
+            const url = '${{ steps.deploy.outputs.deployment-url }}';
+            const body = outcome === 'success'
+              ? `${emoji} **Deployed to staging** — ${url}`
+              : `${emoji} **Staging deploy failed** — check the [workflow run](${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${{ github.run_id }}) for details.`;
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.issue.number,
+              body,
+            });
