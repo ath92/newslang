@@ -1,9 +1,14 @@
 import { ArticleView } from "./views/Article";
 import { Home } from "./views/Home";
+import { Review } from "./views/Review";
 import { Router, useRouter } from "./router";
 
 function RouteSwitch() {
   const { path } = useRouter();
+
+  if (path === "/review") {
+    return <Review />;
+  }
 
   const match = path.match(/^\/article\/(.+)$/);
   if (match) {

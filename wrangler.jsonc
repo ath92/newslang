@@ -3,10 +3,26 @@
   "name": "newslang",
   "main": "./worker/index.ts",
   "compatibility_date": "2026-03-01",
+  // One SQLite-backed Durable Object per user. Each instance keeps its own
+  // embedded SQLite database of saved translations and their contexts.
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "TRANSLATION_STORE",
+        "class_name": "TranslationStore",
+      },
+    ],
+  },
+  "exports": {
+    "TranslationStore": {
+      "type": "durable-object",
+      "storage": "sqlite",
+    },
+  },
   // Serve from the default *.workers.dev subdomain (no custom domain configured yet).
   "workers_dev": true,
   "vars": {
-    "APP_ENV": "production"
+    "APP_ENV": "production",
   },
   // The static Vite build. `directory` is intentionally omitted: the
   // @cloudflare/vite-plugin auto-populates it from the client build output.
@@ -16,21 +32,21 @@
   "assets": {
     "binding": "ASSETS",
     "not_found_handling": "single-page-application",
-    "run_worker_first": ["/api/*"]
+    "run_worker_first": ["/api/*"],
   },
   "env": {
     "staging": {
       "name": "newslang-staging",
       "workers_dev": true,
       "vars": {
-        "APP_ENV": "staging"
-      }
-    }
+        "APP_ENV": "staging",
+      },
+    },
   },
   "observability": {
     "logs": {
       "enabled": true,
-      "invocation_logs": true
-    }
-  }
+      "invocation_logs": true,
+    },
+  },
 }

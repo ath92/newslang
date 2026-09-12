@@ -6,3 +6,8 @@ APP_ENV=development
 
 # Placeholder auth secret — any non-empty string works locally; unused for now.
 JWT_SECRET=dev-secret-change-me
+
+# DeepL API key used for translations (https://www.deepl.com/pro-api).
+# Leave empty in local dev to use the built-in mock translator.
+# Free/sandbox keys end in `:fx` and use the api-free.deepl.com endpoint.
+DEEPL_API_KEY=

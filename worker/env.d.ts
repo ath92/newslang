@@ -10,6 +10,8 @@ interface Env {
   APP_ENV?: string;
   /** Static assets binding, auto-populated by @cloudflare/vite-plugin. */
   ASSETS: Fetcher;
+  /** DeepL API key (set via `wrangler secret put DEEPL_API_KEY`). */
+  DEEPL_API_KEY?: string;
   /** Placeholder auth secret (set via `wrangler secret put`); unused for now. */
   JWT_SECRET?: string;
 }

@@ -1,11 +1,29 @@
-import type { Headline, SourceId } from "../shared/contracts";
+import type {
+  Headline,
+  ReviewResult,
+  SourceId,
+  TranslateRequest,
+  TranslateResponse,
+  TranslationEntry,
+} from "../shared/contracts";
+
+async function readJson<T>(response: Response): Promise<T> {
+  if (!response.ok) {
+    let message = `Errore (${response.status})`;
+    try {
+      const data = (await response.json()) as { error?: string };
+      if (data?.error) message = data.error;
+    } catch {
+      // Keep the generic message when the body is not JSON.
+    }
+    throw new Error(message);
+  }
+  return response.json() as Promise<T>;
+}
 
 export async function fetchHeadlines(source: SourceId): Promise<Headline[]> {
   const response = await fetch(`/api/headlines?source=${encodeURIComponent(source)}`);
-  if (!response.ok) {
-    throw new Error(`Impossibile caricare le notizie (${response.status})`);
-  }
-  return response.json();
+  return readJson<Headline[]>(response);
 }
 
 export async function fetchArticleHtml(url: string): Promise<string> {
@@ -14,4 +32,43 @@ export async function fetchArticleHtml(url: string): Promise<string> {
     throw new Error(`Impossibile caricare l'articolo (${response.status})`);
   }
   return response.text();
+}
+
+/** Translate a selected phrase, saving it to the user's vocabulary. */
+export async function translateSelection(input: TranslateRequest): Promise<TranslateResponse> {
+  const response = await fetch("/api/translate", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  return readJson<TranslateResponse>(response);
+}
+
+/** Every phrase the user has saved, newest first. */
+export async function fetchTranslations(query = ""): Promise<TranslationEntry[]> {
+  const suffix = query ? `?q=${encodeURIComponent(query)}` : "";
+  const response = await fetch(`/api/translations${suffix}`);
+  const data = await readJson<{ entries: TranslationEntry[] }>(response);
+  return data.entries;
+}
+
+/** Record how a review card went and get the updated spaced-repetition state. */
+export async function reviewTranslation(
+  id: number,
+  result: ReviewResult,
+): Promise<TranslationEntry> {
+  const response = await fetch(`/api/translations/${id}/review`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ result }),
+  });
+  const data = await readJson<{ entry: TranslationEntry }>(response);
+  return data.entry;
+}
+
+export async function deleteTranslation(id: number): Promise<void> {
+  const response = await fetch(`/api/translations/${id}`, { method: "DELETE" });
+  if (!response.ok) {
+    throw new Error(`Impossibile eliminare la voce (${response.status})`);
+  }
 }

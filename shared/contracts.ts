@@ -11,6 +11,11 @@ export const SOURCES = [
 
 export type SourceId = (typeof SOURCES)[number]["id"];
 
+/** Language the news is written in, and the language the reader learns. */
+export const SOURCE_LANG = "IT";
+/** Language translations are delivered in (DeepL-style locale code). */
+export const TARGET_LANG = "EN-US";
+
 export interface NewsSource {
   id: SourceId;
   name: string;
@@ -34,3 +39,58 @@ export interface Headline {
   /** Thumbnail image URL, when the feed provides one. */
   image?: string;
 }
+
+/** One place a phrase was seen, with the sentence that surrounded it. */
+export interface TranslationContext {
+  id: number;
+  /** The paragraph/sentence the phrase appeared in. */
+  text: string;
+  /** Text immediately before the selection inside the context. */
+  before?: string;
+  /** Text immediately after the selection inside the context. */
+  after?: string;
+  articleUrl?: string;
+  articleTitle?: string;
+  createdAt: number;
+}
+
+/** A saved phrase plus its translation, reviewer stats and example contexts. */
+export interface TranslationEntry {
+  id: number;
+  phrase: string;
+  translation: string;
+  sourceLang?: string;
+  targetLang: string;
+  provider?: string;
+  createdAt: number;
+  updatedAt: number;
+  reviewCount: number;
+  correctCount: number;
+  lastReviewedAt?: number;
+  /** Leitner box: 0 = new/struggling, MAX_BOX = well known. */
+  box: number;
+  /** Unix ms timestamp of the next review. */
+  dueAt: number;
+  contexts: TranslationContext[];
+}
+
+/** Body of `POST /api/translate`. */
+export interface TranslateRequest {
+  text: string;
+  /** Surrounding paragraph, used to disambiguate the translation. */
+  context?: string;
+  before?: string;
+  after?: string;
+  articleUrl?: string;
+  articleTitle?: string;
+}
+
+/** Response of `POST /api/translate`. */
+export interface TranslateResponse {
+  entry: TranslationEntry;
+  /** True when the phrase was already in the user's vocabulary. */
+  cached: boolean;
+}
+
+/** How the reader answered a review card. */
+export type ReviewResult = "again" | "known";

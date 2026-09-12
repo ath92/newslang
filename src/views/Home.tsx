@@ -66,7 +66,12 @@ export function Home() {
   return (
     <main className="home">
       <header className="home__header">
-        <h1>Newslang</h1>
+        <div className="home__topline">
+          <h1>Newslang</h1>
+          <Link to="/review" className="nav-link">
+            Ripasso
+          </Link>
+        </div>
         <p>Leggi le notizie in italiano</p>
 
         <nav className="source-picker" aria-label="Scegli una fonte">
@@ -93,10 +98,7 @@ export function Home() {
         <ol className="headline-list">
           {headlines.map((headline) => (
             <li key={headline.id}>
-              <Link
-                to={`/article/${encodeURIComponent(headline.link)}`}
-                className="headline-card"
-              >
+              <Link to={`/article/${encodeURIComponent(headline.link)}`} className="headline-card">
                 {headline.image ? (
                   <img
                     className="headline-card__image"
