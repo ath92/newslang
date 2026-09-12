@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  findPhraseIndex,
   MAX_BOX,
   normalizePhrase,
   normalizeWhitespace,
@@ -41,6 +42,31 @@ describe("truncateContext", () => {
   it("appends an ellipsis when cutting", () => {
     const result = truncateContext("a".repeat(50), 10);
     expect(result).toBe(`${"a".repeat(9)}…`);
+  });
+});
+
+describe("findPhraseIndex", () => {
+  const text = "Il cane e il cane.";
+  const second = text.indexOf("cane", 3);
+
+  it("finds a phrase case-insensitively", () => {
+    expect(findPhraseIndex("Ciao Mondo", "mondo")).toBe(5);
+  });
+
+  it("returns -1 when the phrase is absent", () => {
+    expect(findPhraseIndex("Ciao", "arrivederci")).toBe(-1);
+  });
+
+  it("defaults to the first occurrence", () => {
+    expect(findPhraseIndex(text, "cane")).toBe(3);
+  });
+
+  it("uses the preceding snippet to pick the selected occurrence", () => {
+    expect(findPhraseIndex(text, "cane", text.slice(0, second))).toBe(second);
+  });
+
+  it("ignores a truncated preceding snippet", () => {
+    expect(findPhraseIndex(text, "cane", `${"x".repeat(10)}…`)).toBe(3);
   });
 });
 

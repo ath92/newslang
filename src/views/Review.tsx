@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ReviewResult, TranslationEntry } from "../../shared/contracts";
 import { deleteTranslation, fetchTranslations, reviewTranslation } from "../api";
+import { HighlightedText } from "../HighlightedText";
 import { Link } from "../router";
 import { isDue, MAX_BOX } from "../../shared/vocab";
 
@@ -229,7 +230,15 @@ export function Review() {
                         <ul className="entry-card__contexts">
                           {entry.contexts.slice(0, 3).map((context) => (
                             <li key={context.id} className="entry-card__context">
-                              <span className="entry-card__context-text">“{context.text}”</span>
+                              <span className="entry-card__context-text">
+                                “
+                                <HighlightedText
+                                  text={context.text}
+                                  phrase={entry.phrase}
+                                  before={context.before}
+                                />
+                                ”
+                              </span>
                               {context.articleUrl ? (
                                 <a
                                   className="entry-card__source"
@@ -300,7 +309,15 @@ export function Review() {
                   </div>
                   <p className="review-card__phrase">{queue[index].phrase}</p>
                   {queue[index].contexts[0] ? (
-                    <p className="review-card__context">“{queue[index].contexts[0].text}”</p>
+                    <p className="review-card__context">
+                      “
+                      <HighlightedText
+                        text={queue[index].contexts[0].text}
+                        phrase={queue[index].phrase}
+                        before={queue[index].contexts[0].before}
+                      />
+                      ”
+                    </p>
                   ) : null}
 
                   {revealed ? (
