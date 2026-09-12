@@ -3,7 +3,8 @@
 A minimal language-learning web app that reads Italian news. It pulls the
 latest headlines from a choice of free RSS feeds (**ANSA** and **Rai News**),
 and opening an article shows a clean reader view extracted with **Mozilla's
-Readability**. Select a word or phrase in an article to translate it and save it
+Readability**. Select any word or phrase — in the article body, the headline,
+the summary, or anywhere in the interface — to translate it and save it
 to a personal vocabulary; a review view brings saved phrases back for practice.
 It ships the full tooling: Vite + React, TypeScript, a tiny hand-rolled router,
 ESLint + Prettier, Vitest, and a Cloudflare Worker backend with production and
@@ -85,6 +86,19 @@ in behind the same seam — it is a single function in `worker/translation.ts`.
 
 Without `DEEPL_API_KEY`, `APP_ENV=development` uses a deterministic mock
 translator so the whole flow (selection → storage → review) works offline.
+
+### Selection translation
+
+`src/SelectionTranslator.tsx` is mounted once in `App.tsx`, so it watches
+`selectionchange` across the whole document rather than a single article-body
+element. Any selectable text — article body, headline, excerpt, byline,
+navigation, buttons, review cards — offers the same "Traduci" popover. The
+current article's URL and title are published through `src/article-meta.tsx` so
+saved phrases keep that context.
+
+Elements marked with `data-translate-ignore` (and form controls) are skipped, so
+selecting a translation to copy — or the review search box — never triggers a
+new translation.
 
 Vocabulary helpers (whitespace normalization, phrase identity, the review
 scheduler) live in `shared/vocab.ts` and are unit-tested in `test/`.

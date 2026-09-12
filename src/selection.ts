@@ -8,6 +8,13 @@ import {
 /** Block-level elements good enough to serve as "the sentence" around a word. */
 const BLOCK_SELECTOR = "p, li, h1, h2, h3, h4, h5, h6, blockquote, figcaption, td, dd, dt";
 
+/**
+ * Regions that should never trigger a translation: the translator's own UI
+ * (so selecting a translation to copy does not re-translate it) and form
+ * controls such as the review search box.
+ */
+const IGNORE_SELECTOR = "[data-translate-ignore], input, textarea, select";
+
 export interface SelectionRect {
   top: number;
   bottom: number;
@@ -29,13 +36,19 @@ export interface SelectionInfo {
   rect: SelectionRect;
 }
 
-function findBlock(node: Node, root: HTMLElement): Element | null {
+function findBlock(node: Node, root: Node): Element | null {
   let element = node.nodeType === Node.ELEMENT_NODE ? (node as Element) : node.parentElement;
   while (element && element !== root) {
     if (element.matches(BLOCK_SELECTOR)) return element;
     element = element.parentElement;
   }
   return null;
+}
+
+/** True when a node lives inside a region we never translate. */
+function isIgnored(node: Node): boolean {
+  const element = node.nodeType === Node.ELEMENT_NODE ? (node as Element) : node.parentElement;
+  return Boolean(element?.closest(IGNORE_SELECTOR));
 }
 
 function textAround(range: Range, block: Element): { before: string; after: string } {
@@ -60,9 +73,12 @@ function textAround(range: Range, block: Element): { before: string; after: stri
 
 /**
  * Inspect the current selection and describe it, or return null when there is
- * nothing meaningful selected inside `root`.
+ * nothing meaningful selected. Defaults to the whole document so every
+ * selectable bit of text — article body, headline, summary, UI chrome — can be
+ * translated, while ignoring the translator's own UI and form controls.
  */
-export function getSelectionInfo(root: HTMLElement | null): SelectionInfo | null {
+export function getSelectionInfo(scope?: ParentNode | null): SelectionInfo | null {
+  const root = scope ?? document.body;
   if (!root) return null;
 
   const selection = window.getSelection();
@@ -70,6 +86,7 @@ export function getSelectionInfo(root: HTMLElement | null): SelectionInfo | null
 
   const range = selection.getRangeAt(0);
   if (!root.contains(range.commonAncestorContainer)) return null;
+  if (isIgnored(range.startContainer) || isIgnored(range.endContainer)) return null;
 
   const raw = normalizeWhitespace(selection.toString());
   if (!raw || raw.length > MAX_PHRASE_LENGTH) return null;

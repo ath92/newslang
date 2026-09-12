@@ -1,3 +1,6 @@
+import { useMemo, useState } from "react";
+import { ArticleMetaContext, type ArticleMeta } from "./article-meta";
+import { SelectionTranslator } from "./SelectionTranslator";
 import { ArticleView } from "./views/Article";
 import { Home } from "./views/Home";
 import { Review } from "./views/Review";
@@ -25,9 +28,15 @@ function RouteSwitch() {
 }
 
 export default function App() {
+  const [meta, setMeta] = useState<ArticleMeta>({});
+  const value = useMemo(() => ({ meta, setMeta }), [meta]);
+
   return (
     <Router>
-      <RouteSwitch />
+      <ArticleMetaContext.Provider value={value}>
+        <RouteSwitch />
+        <SelectionTranslator />
+      </ArticleMetaContext.Provider>
     </Router>
   );
 }
