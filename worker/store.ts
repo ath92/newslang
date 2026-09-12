@@ -168,6 +168,43 @@ export class TranslationStore extends DurableObject<Env> {
     return row ? this.hydrate(row) : null;
   }
 
+  /**
+   * Entries still carrying the development mock translation. Used to upgrade
+   * phrases that were saved before a real provider key was configured.
+   */
+  async listMock(targetLang: string, limit: number): Promise<TranslationEntry[]> {
+    const rows = this.sql
+      .exec<EntryRow>(
+        `SELECT ${ENTRY_COLUMNS} FROM entries
+         WHERE provider = 'mock' AND target_lang = ?
+         ORDER BY updated_at ASC LIMIT ?`,
+        targetLang,
+        limit,
+      )
+      .toArray();
+    return this.hydrateAll(rows);
+  }
+
+  /**
+   * Replace an entry's translation in place (e.g. upgrade a mock to a real
+   * provider). `updated_at` is intentionally left alone so refreshing does not
+   * reshuffle the vocabulary list.
+   */
+  async updateTranslation(
+    id: number,
+    input: { translation: string; sourceLang?: string; provider?: string },
+  ): Promise<TranslationEntry | null> {
+    const result = this.sql.exec(
+      `UPDATE entries SET translation = ?, source_lang = ?, provider = ? WHERE id = ?`,
+      input.translation,
+      input.sourceLang ?? null,
+      input.provider ?? null,
+      id,
+    );
+    if (result.rowsWritten === 0) return null;
+    return this.getEntry(id);
+  }
+
   /** Record a new phrase (or attach a context to an existing one). */
   async saveTranslation(input: SaveTranslationInput): Promise<SaveTranslationResult> {
     const key = phraseKey(input.phrase);

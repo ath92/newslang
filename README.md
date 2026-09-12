@@ -86,6 +86,12 @@ in behind the same seam — it is a single function in `worker/translation.ts`.
 
 Without `DEEPL_API_KEY`, `APP_ENV=development` uses a deterministic mock
 translator so the whole flow (selection → storage → review) works offline.
+When a key is later configured, any entries still stored with the mock
+provider are re-translated and updated in place: `GET /api/translations`
+refreshes them before returning the list (so the review view shows real
+translations without re-selecting each phrase), and re-selecting a mock phrase
+refreshes it too. If the provider call fails the mock is kept, so a later
+request can retry.
 
 ### Selection translation
 

@@ -1,5 +1,5 @@
 import { SOURCES, SOURCE_LANG, TARGET_LANG } from "../shared/contracts";
-import type { ReviewResult, TranslateRequest } from "../shared/contracts";
+import type { ReviewResult, TranslateRequest, TranslationEntry } from "../shared/contracts";
 import {
   normalizePhrase,
   normalizeWhitespace,
@@ -59,6 +59,51 @@ function storeFor(env: Env, userId: string) {
   return namespace.get(namespace.idFromName(userId));
 }
 
+/** Cap how many legacy mock entries we upgrade per request. */
+const MOCK_REFRESH_LIMIT = 25;
+
+/**
+ * Re-translate an entry that was stored by the deterministic mock translator,
+ * now that a real provider key is configured. Returns the updated entry, or
+ * null when there is nothing to do (or the provider call fails).
+ */
+async function refreshMockEntry(
+  env: Env,
+  store: ReturnType<typeof storeFor>,
+  entry: TranslationEntry,
+): Promise<TranslationEntry | null> {
+  if (entry.provider !== "mock" || !env.DEEPL_API_KEY) return null;
+
+  try {
+    const result = await translateText({
+      text: entry.phrase,
+      context: entry.contexts[0]?.text,
+      sourceLang: SOURCE_LANG,
+      targetLang: TARGET_LANG,
+      apiKey: env.DEEPL_API_KEY,
+      allowMock: false,
+    });
+    return await store.updateTranslation(entry.id, {
+      translation: result.translation,
+      sourceLang: result.detectedSourceLang ?? SOURCE_LANG,
+      provider: result.provider,
+    });
+  } catch (error) {
+    // Keep the mock so a later request can try again instead of failing the list.
+    console.warn("Failed to refresh mock translation", entry.id, error);
+    return null;
+  }
+}
+
+/** Upgrade any phrases still carrying a mock translation for this user. */
+async function refreshMockEntries(env: Env, store: ReturnType<typeof storeFor>): Promise<void> {
+  if (!env.DEEPL_API_KEY) return;
+  const mocks = await store.listMock(TARGET_LANG, MOCK_REFRESH_LIMIT);
+  for (const entry of mocks) {
+    await refreshMockEntry(env, store, entry);
+  }
+}
+
 async function handleTranslate(request: Request, env: Env, userId: string): Promise<Response> {
   const body = await readJson<Partial<TranslateRequest>>(request);
   if (!body || typeof body.text !== "string") {
@@ -89,7 +134,10 @@ async function handleTranslate(request: Request, env: Env, userId: string): Prom
   // lookups never hit the paid API.
   const existing = await store.getByPhrase(phrase, TARGET_LANG);
   if (existing) {
-    const entry = (await store.addContext(existing.id, context, now)) ?? existing;
+    // A phrase saved before DeepL was configured would otherwise stay mock
+    // forever, because we reuse cached translations and never call the API.
+    const current = (await refreshMockEntry(env, store, existing)) ?? existing;
+    const entry = (await store.addContext(current.id, context, now)) ?? current;
     return json({ entry, cached: true });
   }
 
@@ -204,7 +252,9 @@ async function handleApi(request: Request, env: Env, userId: string): Promise<Re
 
   if (url.pathname === "/api/translations" && request.method === "GET") {
     const query = url.searchParams.get("q") ?? "";
-    const entries = await storeFor(env, userId).list(query, MAX_ENTRIES);
+    const store = storeFor(env, userId);
+    await refreshMockEntries(env, store);
+    const entries = await store.list(query, MAX_ENTRIES);
     return json({ entries });
   }
 
