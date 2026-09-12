@@ -50,6 +50,9 @@ POST   /api/translate     -> translate + save a selection; body { text, context?
 GET    /api/translations?q=<search> -> { entries: TranslationEntry[] }
 POST   /api/translations/:id/review -> record a review; body { result: "again" | "known" }
 DELETE /api/translations/:id
+GET    /api/progress?tzOffsetMinutes=<n> -> { targetMinutes, today, history, streak }
+POST   /api/progress/read -> credit an article; body { articleUrl, articleTitle?, minutes, tzOffsetMinutes }
+PUT    /api/progress/target -> set the daily goal; body { targetMinutes, tzOffsetMinutes }
 ```
 
 `worker/rss.ts` fetches and parses each source's RSS feed with
@@ -105,6 +108,23 @@ saved phrases keep that context.
 Elements marked with `data-translate-ignore` (and form controls) are skipped, so
 selecting a translation to copy — or the review search box — never triggers a
 new translation.
+
+### Daily reading goal
+
+Readers can set a daily target in minutes (default 10, with presets and an
+"off" option) from the chip in the Home and article headers. Opening an article
+credits its **estimated** read time (see `shared/reading.ts`, 100 wpm) to the
+per-user, per-local-day counter exactly once per article; reopening it the same
+day is deduped. A subtle toast confirms each credit and a celebratory one fires
+when the day's target is crossed. The chip shows today's progress plus the
+current streak, and the goal dialog shows a 7-day history strip.
+
+Progress lives in the same per-user Durable Object as the vocabulary
+(`reading_goal` + `reading_log` tables in `worker/store.ts`). Instants are
+stored as UTC (`created_at`) together with the reader's `tzOffsetMinutes`, and
+the local calendar day is derived in `shared/progress.ts` — so "today" follows
+the reader's timezone without any server-side tz math. Streaks are computed
+from a 30-day window and shown with the last 7 days.
 
 ### Installing as an app (PWA)
 

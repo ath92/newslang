@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { fetchArticleHtml } from "../api";
 import { useArticleMeta } from "../article-meta";
+import { ReadingProgressBar } from "../ReadingProgressBar";
+import { useReadingProgress } from "../reading-progress";
 import { extractArticle, type Article } from "../readability";
 import { Link } from "../router";
 import { sanitizeHtml } from "../sanitize";
@@ -9,6 +11,7 @@ export function ArticleView({ url }: { url: string }) {
   const [article, setArticle] = useState<Article | null>(null);
   const [error, setError] = useState<string | null>(null);
   const { setMeta } = useArticleMeta();
+  const { recordArticle } = useReadingProgress();
 
   useEffect(() => {
     let cancelled = false;
@@ -24,6 +27,9 @@ export function ArticleView({ url }: { url: string }) {
           return;
         }
         setArticle(parsed);
+        if (parsed.readMinutes) {
+          void recordArticle({ url, title: parsed.title, minutes: parsed.readMinutes });
+        }
       })
       .catch((err: unknown) => {
         if (!cancelled) {
@@ -34,7 +40,7 @@ export function ArticleView({ url }: { url: string }) {
     return () => {
       cancelled = true;
     };
-  }, [url]);
+  }, [url, recordArticle]);
 
   // Register this article with the document-wide translator so saved phrases
   // are labelled with the article they came from.
@@ -77,6 +83,7 @@ export function ArticleView({ url }: { url: string }) {
               </p>
             ) : null}
             {article.excerpt ? <p className="article__excerpt">{article.excerpt}</p> : null}
+            <ReadingProgressBar className="reading-progress--article" />
             {article.preview ? (
               <p className="article__preview-note">
                 Anteprima — il contenuto completo è riservato agli abbonati.

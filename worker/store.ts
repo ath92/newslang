@@ -1,5 +1,11 @@
 import { DurableObject } from "cloudflare:workers";
-import type { ReviewResult, TranslationContext, TranslationEntry } from "../shared/contracts";
+import type {
+  DailyProgress,
+  ReviewResult,
+  TranslationContext,
+  TranslationEntry,
+} from "../shared/contracts";
+import { DEFAULT_DAILY_TARGET_MINUTES, shiftDay } from "../shared/progress";
 import { phraseKey, scheduleReview, truncateContext } from "../shared/vocab";
 
 const ENTRY_COLUMNS = [
@@ -49,6 +55,13 @@ interface ContextRow {
   created_at: number;
 }
 
+interface DailyRow {
+  [key: string]: SqlStorageValue;
+  day: string;
+  minutes: number;
+  articles: number;
+}
+
 export interface StoreContext {
   text: string;
   before?: string;
@@ -71,6 +84,15 @@ export interface SaveTranslationResult {
   entry: TranslationEntry;
   /** True when this call created a brand new vocabulary entry. */
   created: boolean;
+}
+
+export interface RecordReadingInput {
+  day: string;
+  articleUrl: string;
+  articleTitle?: string;
+  minutes: number;
+  tzOffsetMinutes: number;
+  now: number;
 }
 
 function toContext(row: ContextRow): TranslationContext {
@@ -154,6 +176,30 @@ export class TranslationStore extends DurableObject<Env> {
     ctx.storage.sql.exec(
       `CREATE INDEX IF NOT EXISTS contexts_entry ON contexts (entry_id, created_at DESC);`,
     );
+
+    // Daily reading goal + one row per article credited per local day.
+    ctx.storage.sql.exec(`
+      CREATE TABLE IF NOT EXISTS reading_goal (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        minutes INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+    `);
+    ctx.storage.sql.exec(`
+      CREATE TABLE IF NOT EXISTS reading_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        day TEXT NOT NULL,
+        article_url TEXT NOT NULL,
+        article_title TEXT,
+        minutes INTEGER NOT NULL,
+        tz_offset INTEGER NOT NULL DEFAULT 0,
+        created_at INTEGER NOT NULL
+      );
+    `);
+    ctx.storage.sql.exec(
+      `CREATE UNIQUE INDEX IF NOT EXISTS reading_log_unique ON reading_log (day, article_url);`,
+    );
+    ctx.storage.sql.exec(`CREATE INDEX IF NOT EXISTS reading_log_day ON reading_log (day);`);
   }
 
   /** Look up an existing entry so we can reuse its translation (and skip the API). */
@@ -320,6 +366,93 @@ export class TranslationStore extends DurableObject<Env> {
   async remove(id: number): Promise<boolean> {
     this.sql.exec(`DELETE FROM contexts WHERE entry_id = ?`, id);
     return this.sql.exec(`DELETE FROM entries WHERE id = ?`, id).rowsWritten > 0;
+  }
+
+  /** The reader's daily target; falls back to the default when unset. */
+  async getDailyTarget(): Promise<number> {
+    const row = this.sql
+      .exec<DailyRow>(`SELECT minutes FROM reading_goal WHERE id = 1`)
+      .toArray()[0];
+    return row ? Number(row.minutes) : DEFAULT_DAILY_TARGET_MINUTES;
+  }
+
+  /** Persist the reader's daily target. */
+  async setDailyTarget(minutes: number, now: number): Promise<number> {
+    this.sql.exec(
+      `INSERT INTO reading_goal (id, minutes, updated_at) VALUES (1, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET minutes = excluded.minutes, updated_at = excluded.updated_at`,
+      minutes,
+      now,
+    );
+    return minutes;
+  }
+
+  /** Minutes and distinct articles credited on one local day. */
+  async getDailyProgress(day: string): Promise<DailyProgress> {
+    const row = this.sql
+      .exec<DailyRow>(
+        `SELECT COALESCE(SUM(minutes), 0) AS minutes, COUNT(*) AS articles
+         FROM reading_log WHERE day = ?`,
+        day,
+      )
+      .one();
+    return { day, minutes: Number(row.minutes), articles: Number(row.articles) };
+  }
+
+  /** A zero-filled, oldest-first day history ending on `today`. */
+  async getHistory(today: string, limit: number): Promise<DailyProgress[]> {
+    const rows = this.sql
+      .exec<DailyRow>(
+        `SELECT day, COALESCE(SUM(minutes), 0) AS minutes, COUNT(*) AS articles
+         FROM reading_log WHERE day >= ? AND day <= ? GROUP BY day`,
+        shiftDay(today, -(limit - 1)),
+        today,
+      )
+      .toArray();
+    const byDay = new Map(rows.map((row) => [row.day, row]));
+    const history: DailyProgress[] = [];
+    for (let offset = limit - 1; offset >= 0; offset -= 1) {
+      const day = shiftDay(today, -offset);
+      const row = byDay.get(day);
+      history.push({
+        day,
+        minutes: row ? Number(row.minutes) : 0,
+        articles: row ? Number(row.articles) : 0,
+      });
+    }
+    return history;
+  }
+
+  /** Credit an article once per local day; duplicate opens are ignored. */
+  async recordReading(input: RecordReadingInput): Promise<{
+    counted: boolean;
+    today: DailyProgress;
+  }> {
+    const alreadyCounted =
+      this.sql
+        .exec(
+          `SELECT 1 AS present FROM reading_log WHERE day = ? AND article_url = ? LIMIT 1`,
+          input.day,
+          input.articleUrl,
+        )
+        .toArray().length > 0;
+
+    if (!alreadyCounted) {
+      this.sql.exec(
+        `INSERT OR IGNORE INTO reading_log
+           (day, article_url, article_title, minutes, tz_offset, created_at)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        input.day,
+        input.articleUrl,
+        input.articleTitle ?? null,
+        input.minutes,
+        input.tzOffsetMinutes,
+        input.now,
+      );
+    }
+
+    const today = await this.getDailyProgress(input.day);
+    return { counted: !alreadyCounted, today };
   }
 
   private insertContext(entryId: number, context: StoreContext, now: number): void {

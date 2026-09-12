@@ -1,6 +1,11 @@
 import type {
   Headline,
+  ProgressResponse,
+  RecordReadingRequest,
+  RecordReadingResponse,
   ReviewResult,
+  SetTargetRequest,
+  SetTargetResponse,
   SourceId,
   TranslateRequest,
   TranslateResponse,
@@ -71,4 +76,32 @@ export async function deleteTranslation(id: number): Promise<void> {
   if (!response.ok) {
     throw new Error(`Impossibile eliminare la voce (${response.status})`);
   }
+}
+
+/** Today's reading progress, the 7-day history and the current streak. */
+export async function fetchProgress(tzOffsetMinutes: number): Promise<ProgressResponse> {
+  const response = await fetch(
+    `/api/progress?tzOffsetMinutes=${encodeURIComponent(tzOffsetMinutes)}`,
+  );
+  return readJson<ProgressResponse>(response);
+}
+
+/** Credit an article's estimated read time to today's goal. */
+export async function recordReading(input: RecordReadingRequest): Promise<RecordReadingResponse> {
+  const response = await fetch("/api/progress/read", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  return readJson<RecordReadingResponse>(response);
+}
+
+/** Change the daily reading target (`0` turns the goal off). */
+export async function setDailyTarget(input: SetTargetRequest): Promise<SetTargetResponse> {
+  const response = await fetch("/api/progress/target", {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  return readJson<SetTargetResponse>(response);
 }

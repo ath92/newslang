@@ -3,6 +3,7 @@ import { SOURCES } from "../../shared/contracts";
 import type { Headline, SourceId } from "../../shared/contracts";
 import { fetchHeadlines } from "../api";
 import { Link } from "../router";
+import { ReadingProgressBar } from "../ReadingProgressBar";
 
 const STORAGE_KEY = "newslang.source";
 
@@ -73,6 +74,8 @@ export function Home() {
           </Link>
         </div>
         <p>Leggi le notizie in italiano</p>
+
+        <ReadingProgressBar />
 
         <nav className="source-picker" aria-label="Scegli una fonte">
           {SOURCES.map((item) => (

@@ -1,5 +1,24 @@
 import { SOURCES, SOURCE_LANG, TARGET_LANG } from "../shared/contracts";
-import type { ReviewResult, TranslateRequest, TranslationEntry } from "../shared/contracts";
+import type {
+  ProgressResponse,
+  RecordReadingRequest,
+  RecordReadingResponse,
+  ReviewResult,
+  SetTargetRequest,
+  SetTargetResponse,
+  TranslateRequest,
+  TranslationEntry,
+} from "../shared/contracts";
+import {
+  clampDailyTarget,
+  clampReadingMinutes,
+  clampTimezoneOffset,
+  computeStreak,
+  HISTORY_DAYS,
+  isTargetMet,
+  localDayKey,
+  STREAK_WINDOW_DAYS,
+} from "../shared/progress";
 import {
   normalizePhrase,
   normalizeWhitespace,
@@ -278,6 +297,84 @@ async function handleApi(request: Request, env: Env, userId: string): Promise<Re
     const removed = await storeFor(env, userId).remove(Number(deleteMatch[1]));
     if (!removed) return json({ error: "Translation not found" }, 404);
     return new Response(null, { status: 204 });
+  }
+
+  if (url.pathname === "/api/progress" && request.method === "GET") {
+    const tzOffsetMinutes = clampTimezoneOffset(Number(url.searchParams.get("tzOffsetMinutes")));
+    const store = storeFor(env, userId);
+    const targetMinutes = await store.getDailyTarget();
+    const today = localDayKey(Date.now(), tzOffsetMinutes);
+    const wide = await store.getHistory(today, STREAK_WINDOW_DAYS);
+    const response: ProgressResponse = {
+      targetMinutes,
+      today: wide[wide.length - 1],
+      history: wide.slice(-HISTORY_DAYS),
+      streak: computeStreak(wide, targetMinutes, today),
+    };
+    return json(response);
+  }
+
+  if (url.pathname === "/api/progress/read" && request.method === "POST") {
+    const body = await readJson<Partial<RecordReadingRequest>>(request);
+    const articleUrl = safeArticleUrl(body?.articleUrl);
+    if (!body || typeof body.minutes !== "number" || !articleUrl) {
+      return json({ error: "`articleUrl` and `minutes` are required" }, 400);
+    }
+
+    const tzOffsetMinutes = clampTimezoneOffset(
+      typeof body.tzOffsetMinutes === "number" ? body.tzOffsetMinutes : 0,
+    );
+    const minutes = clampReadingMinutes(body.minutes);
+    const now = Date.now();
+    const day = localDayKey(now, tzOffsetMinutes);
+    const store = storeFor(env, userId);
+
+    const targetMinutes = await store.getDailyTarget();
+    const before = await store.getDailyProgress(day);
+    const { counted, today } = await store.recordReading({
+      day,
+      articleUrl,
+      articleTitle:
+        typeof body.articleTitle === "string" ? body.articleTitle.slice(0, 300) : undefined,
+      minutes,
+      tzOffsetMinutes,
+      now,
+    });
+    const wide = await store.getHistory(day, STREAK_WINDOW_DAYS);
+
+    const response: RecordReadingResponse = {
+      targetMinutes,
+      today,
+      streak: computeStreak(wide, targetMinutes, day),
+      justMetTarget:
+        counted &&
+        !isTargetMet(before.minutes, targetMinutes) &&
+        isTargetMet(today.minutes, targetMinutes),
+      counted,
+    };
+    return json(response);
+  }
+
+  if (url.pathname === "/api/progress/target" && request.method === "PUT") {
+    const body = await readJson<Partial<SetTargetRequest>>(request);
+    if (!body || typeof body.targetMinutes !== "number") {
+      return json({ error: "`targetMinutes` is required" }, 400);
+    }
+
+    const targetMinutes = clampDailyTarget(body.targetMinutes);
+    const tzOffsetMinutes = clampTimezoneOffset(
+      typeof body.tzOffsetMinutes === "number" ? body.tzOffsetMinutes : 0,
+    );
+    const store = storeFor(env, userId);
+    await store.setDailyTarget(targetMinutes, Date.now());
+
+    const today = localDayKey(Date.now(), tzOffsetMinutes);
+    const wide = await store.getHistory(today, STREAK_WINDOW_DAYS);
+    const response: SetTargetResponse = {
+      targetMinutes,
+      streak: computeStreak(wide, targetMinutes, today),
+    };
+    return json(response);
   }
 
   return json({ error: "Not found" }, 404);

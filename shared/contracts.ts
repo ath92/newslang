@@ -94,3 +94,58 @@ export interface TranslateResponse {
 
 /** How the reader answered a review card. */
 export type ReviewResult = "again" | "known";
+
+/** One calendar day of reading activity, in the reader's local timezone. */
+export interface DailyProgress {
+  /** Local calendar day, `YYYY-MM-DD`. */
+  day: string;
+  /** Estimated minutes credited that day. */
+  minutes: number;
+  /** Distinct articles credited that day. */
+  articles: number;
+}
+
+/** Body of `POST /api/progress/read`. */
+export interface RecordReadingRequest {
+  articleUrl: string;
+  articleTitle?: string;
+  /** Estimated reading time of the article, in minutes. */
+  minutes: number;
+  /** The reader's `Date#getTimezoneOffset()`, in minutes. */
+  tzOffsetMinutes: number;
+}
+
+/** Response of `GET /api/progress`. */
+export interface ProgressResponse {
+  targetMinutes: number;
+  today: DailyProgress;
+  /** Most recent days, oldest first, one entry per day (zero-filled). */
+  history: DailyProgress[];
+  /** Consecutive days (ending today or yesterday) that met the target. */
+  streak: number;
+}
+
+/** Response of `POST /api/progress/read`. */
+export interface RecordReadingResponse {
+  targetMinutes: number;
+  today: DailyProgress;
+  streak: number;
+  /** True when this article pushed the reader from below to at/above target. */
+  justMetTarget: boolean;
+  /** False when the article was already counted for the day. */
+  counted: boolean;
+}
+
+/** Body of `PUT /api/progress/target`. */
+export interface SetTargetRequest {
+  /** `0` disables the daily goal. */
+  targetMinutes: number;
+  /** The reader's `Date#getTimezoneOffset()`, in minutes. */
+  tzOffsetMinutes: number;
+}
+
+/** Response of `PUT /api/progress/target`. */
+export interface SetTargetResponse {
+  targetMinutes: number;
+  streak: number;
+}

@@ -797,3 +797,242 @@ kbd {
   color: inherit;
   font-weight: 700;
 }
+
+/* ---------- Daily reading progress ---------- */
+
+.reading-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  width: 100%;
+  margin-top: 0.85rem;
+  padding: 0.6rem 0.75rem;
+  border: none;
+  border-radius: 10px;
+  background: #f4efe6;
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 0.8rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.reading-progress--met {
+  background: rgba(176, 35, 24, 0.1);
+}
+
+.reading-progress--unset {
+  color: var(--text-muted);
+  font-weight: 600;
+  text-align: center;
+}
+
+.reading-progress__label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-weight: 700;
+}
+
+.reading-progress__streak {
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.reading-progress__track {
+  display: block;
+  overflow: hidden;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.reading-progress__fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent);
+  transition: width 0.3s ease;
+}
+
+/* ---------- Toast ---------- */
+
+.toast {
+  position: fixed;
+  top: calc(0.75rem + env(safe-area-inset-top, 0px));
+  left: 50%;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  max-width: calc(100vw - 1.5rem);
+  padding: 0.6rem 0.75rem 0.6rem 0.9rem;
+  transform: translateX(-50%);
+  border-radius: 999px;
+  background: #1f1a17;
+  color: #fff;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 0.82rem;
+  animation: toast-in 0.2s ease;
+}
+
+.toast--success {
+  background: var(--accent);
+}
+
+.toast__close {
+  border: none;
+  background: none;
+  color: inherit;
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0.8;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -6px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+/* ---------- Daily goal dialog ---------- */
+
+.goal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.goal-dialog {
+  width: min(420px, 100%);
+  max-height: calc(100vh - 2rem);
+  overflow-y: auto;
+  padding: 1.25rem;
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.28);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.goal-dialog h2 {
+  margin: 0;
+  font-size: 1.3rem;
+}
+
+.goal-dialog__lead {
+  margin: 0.35rem 0 1rem;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.goal-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.goal-dialog__custom {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin-top: 0.85rem;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+}
+
+.goal-dialog__custom input {
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font: inherit;
+}
+
+.goal-dialog__off {
+  display: block;
+  margin-top: 0.85rem;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 0.82rem;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.goal-dialog__off--active {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.goal-dialog__today {
+  margin: 0.85rem 0 0;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+}
+
+.goal-history {
+  margin-top: 1rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--border);
+}
+
+.goal-history__head {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.goal-history__bars {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 0.35rem;
+  align-items: end;
+  height: 64px;
+}
+
+.goal-history__bar {
+  display: flex;
+  align-items: flex-end;
+  height: 100%;
+  overflow: hidden;
+  border-radius: 4px;
+  background: #eee7db;
+}
+
+.goal-history__bar-fill {
+  display: block;
+  width: 100%;
+  min-height: 2px;
+  border-radius: 4px;
+  background: var(--accent);
+}
+
+.goal-dialog__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 1.25rem;
+}
+
+.goal-dialog__error {
+  margin: 0.85rem 0 0;
+  color: var(--accent);
+  font-size: 0.82rem;
+}

@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { ArticleMetaContext, type ArticleMeta } from "./article-meta";
 import { InstallPrompt } from "./InstallPrompt";
+import { ReadingProgressProvider } from "./reading-progress";
 import { SelectionTranslator } from "./SelectionTranslator";
 import { ArticleView } from "./views/Article";
 import { Home } from "./views/Home";
@@ -35,9 +36,11 @@ export default function App() {
   return (
     <Router>
       <ArticleMetaContext.Provider value={value}>
-        <RouteSwitch />
-        <SelectionTranslator />
-        <InstallPrompt />
+        <ReadingProgressProvider>
+          <RouteSwitch />
+          <SelectionTranslator />
+          <InstallPrompt />
+        </ReadingProgressProvider>
       </ArticleMetaContext.Provider>
     </Router>
   );
