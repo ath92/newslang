@@ -53,6 +53,11 @@ DELETE /api/translations/:id
 GET    /api/progress?tzOffsetMinutes=<n> -> { targetMinutes, today, history, streak }
 POST   /api/progress/read -> credit an article; body { articleUrl, articleTitle?, minutes, tzOffsetMinutes }
 PUT    /api/progress/target -> set the daily goal; body { targetMinutes, tzOffsetMinutes }
+GET    /api/notifications -> { enabled, reminderMinutes, timezone, vapidPublicKey, subscribed }
+PUT    /api/notifications -> enable/disable + set the reminder time; body { enabled, reminderMinutes?, timezone? }
+POST   /api/notifications/subscribe -> register this device's push subscription; body { endpoint, keys }
+POST   /api/notifications/unsubscribe -> remove it; body { endpoint }
+POST   /api/notifications/test -> send a one-off test push
 ```
 
 `worker/rss.ts` fetches and parses each source's RSS feed with
@@ -126,6 +131,35 @@ the local calendar day is derived in `shared/progress.ts` — so "today" follows
 the reader's timezone without any server-side tz math. Streaks are computed
 from a 30-day window and shown with the last 7 days.
 
+### Daily reminders (Web Push)
+
+Each device can opt into one reminder a day — by default at 20:00 local — that
+fires only when the day's target is still unmet. The plumbing reuses the same
+per-user Durable Object:
+
+- `notification_settings` stores `enabled`, `reminderMinutes` (minutes after
+  local midnight) and an IANA `timezone`, so the reminder keeps its wall-clock
+  time across daylight-saving changes (`shared/reminders.ts` derives the next
+  instant with `Intl.DateTimeFormat`; `Date` is always UTC in Workers).
+- `push_subscriptions` holds the browser's Web Push subscription, and
+  `reminder_log` claims one reminder per local day so an alarm retry can never
+  double-send.
+- The DO arms a single `alarm()` at the next reminder instant; when it fires it
+  checks `getDailyProgress` against the target, sends if needed, then re-arms
+  for tomorrow. Enabling notifications _after_ the reminder time sends the
+  nudge immediately instead of waiting a day.
+- Delivery uses **`@mmmike/web-push`** (RFC 8291 `aes128gcm` + RFC 8292 VAPID,
+  built on Web Crypto) so it runs in Workers without `nodejs_compat`. The
+  service worker (`public/sw.js`) shows the payload and opens `/` on click.
+  Dead endpoints (HTTP 404/410) are pruned automatically.
+
+Because identity is still an anonymous cookie, reminders are **per device**: a
+phone and a laptop are separate "users" until real accounts exist. On iOS,
+Safari only delivers Web Push to a PWA **installed to the Home Screen**
+(iOS 16.4+); the settings UI degrades gracefully elsewhere. Endpoints are
+allowlisted to the real push services (FCM, Mozilla, Apple) so a hostile client
+can't turn the Worker into an SSRF proxy.
+
 ### Installing as an app (PWA)
 
 Newslang is installable from the browser. `public/manifest.webmanifest` declares
@@ -169,6 +203,24 @@ wrangler secret put DEEPL_API_KEY             # production
 wrangler secret put DEEPL_API_KEY --env staging
 ```
 
+### Web Push (VAPID) keys
+
+Reminders need a VAPID key pair. Generate one and set it per environment:
+
+```sh
+node --input-type=module -e "import {generateVapidKeys} from '@mmmike/web-push/vapid'; console.log(await generateVapidKeys())"
+
+wrangler secret put VAPID_PUBLIC_KEY             # production
+wrangler secret put VAPID_PRIVATE_KEY            # production
+wrangler secret put VAPID_PUBLIC_KEY --env staging
+wrangler secret put VAPID_PRIVATE_KEY --env staging
+```
+
+`VAPID_SUBJECT` (a `mailto:` contact URI) is a plain var in `wrangler.jsonc`.
+Without the key pair, the notification settings UI reports that push is
+unconfigured and no sends are attempted. Local dev uses the dev-only pair in
+`.dev.vars`.
+
 ## Deploying to Cloudflare
 
 Both environments deploy to the default `*.workers.dev` subdomain (no custom domain
@@ -184,7 +236,7 @@ CI authenticates with two repository secrets (the same approach chesspath uses):
 - `CLOUDFLARE_API_TOKEN` — a Cloudflare API token with Workers deploy permission
 - `CLOUDFLARE_ACCOUNT_ID` — your Cloudflare account id
 
-App secrets (e.g. `DEEPL_API_KEY`, and the placeholder `JWT_SECRET`) are set per
+App secrets (e.g. `DEEPL_API_KEY` and the VAPID key pair) are set per
 environment with `wrangler secret put` (or the `secrets` input of
 `wrangler-action` in CI), and read locally from `.dev.vars`.
 

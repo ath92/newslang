@@ -1,6 +1,8 @@
 import type {
   Headline,
+  NotificationSettingsResponse,
   ProgressResponse,
+  PushSubscriptionInput,
   RecordReadingRequest,
   RecordReadingResponse,
   ReviewResult,
@@ -10,6 +12,7 @@ import type {
   TranslateRequest,
   TranslateResponse,
   TranslationEntry,
+  UpdateNotificationsRequest,
 } from "../shared/contracts";
 
 async function readJson<T>(response: Response): Promise<T> {
@@ -104,4 +107,61 @@ export async function setDailyTarget(input: SetTargetRequest): Promise<SetTarget
     body: JSON.stringify(input),
   });
   return readJson<SetTargetResponse>(response);
+}
+
+/** This device's reminder settings and the VAPID key needed to subscribe. */
+export async function fetchNotificationSettings(): Promise<NotificationSettingsResponse> {
+  const response = await fetch("/api/notifications");
+  return readJson<NotificationSettingsResponse>(response);
+}
+
+/** Enable/disable the reminder and/or change its local time. */
+export async function updateNotificationSettings(
+  input: UpdateNotificationsRequest,
+): Promise<NotificationSettingsResponse> {
+  const response = await fetch("/api/notifications", {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  return readJson<NotificationSettingsResponse>(response);
+}
+
+/** Register this device's push subscription with the Worker. */
+export async function subscribeToPush(input: PushSubscriptionInput): Promise<void> {
+  const response = await fetch("/api/notifications/subscribe", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!response.ok) {
+    throw new Error(`Impossibile attivare le notifiche (${response.status})`);
+  }
+}
+
+/** Remove this device's push subscription from the Worker. */
+export async function unsubscribeFromPush(endpoint: string): Promise<void> {
+  const response = await fetch("/api/notifications/unsubscribe", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ endpoint }),
+  });
+  if (!response.ok) {
+    throw new Error(`Impossibile disattivare le notifiche (${response.status})`);
+  }
+}
+
+/** Ask the Worker to push a one-off test notification. */
+export async function sendTestNotification(): Promise<void> {
+  const response = await fetch("/api/notifications/test", { method: "POST" });
+  if (!response.ok) {
+    let message = `Errore (${response.status})`;
+    try {
+      const data = (await response.json()) as { error?: string };
+      if (data?.error) message = data.error;
+    } catch {
+      // Keep the generic message when the body is not JSON.
+    }
+    throw new Error(message);
+  }
 }

@@ -4,10 +4,14 @@
 # Treat every local-dev host as development.
 APP_ENV=development
 
-# Placeholder auth secret — any non-empty string works locally; unused for now.
-JWT_SECRET=dev-secret-change-me
-
 # DeepL API key used for translations (https://www.deepl.com/pro-api).
 # Leave empty in local dev to use the built-in mock translator.
 # Free/sandbox keys end in `:fx` and use the api-free.deepl.com endpoint.
 DEEPL_API_KEY=
+
+# Web Push VAPID keys. Generate a dev pair with:
+#   node --input-type=module -e "import {generateVapidKeys} from '@mmmike/web-push/vapid'; console.log(await generateVapidKeys())"
+# The values below are dev-only; generate your own and never reuse them in production.
+VAPID_PUBLIC_KEY=BDBwJVPwECtjBNAsEy8gL0QQTyFKGhmagbv0bDqxKj4_KWSBb0xAX12e39N1vo5jxTnjr8hn4dNi0m_Hpab8ZrY
+VAPID_PRIVATE_KEY=ybtt3QQf8hDrfpsSXV3jXvmcbb1OczGoH2yAqWqb6GI
+VAPID_SUBJECT=mailto:hello@newslang.app

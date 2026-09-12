@@ -1,12 +1,28 @@
 import { DurableObject } from "cloudflare:workers";
 import type {
   DailyProgress,
+  NotificationSettings,
   ReviewResult,
   TranslationContext,
   TranslationEntry,
 } from "../shared/contracts";
-import { DEFAULT_DAILY_TARGET_MINUTES, shiftDay } from "../shared/progress";
+import {
+  computeStreak,
+  DEFAULT_DAILY_TARGET_MINUTES,
+  shiftDay,
+  STREAK_WINDOW_DAYS,
+} from "../shared/progress";
+import {
+  DEFAULT_REMINDER_MINUTES,
+  FALLBACK_TIMEZONE,
+  localDayKeyInZone,
+  nextReminderAt,
+  reminderCopy,
+  shouldRemind,
+  todaysReminderAt,
+} from "../shared/reminders";
 import { phraseKey, scheduleReview, truncateContext } from "../shared/vocab";
+import { sendPush, vapidFromEnv, type PushPayload, type StoredPushSubscription } from "./push";
 
 const ENTRY_COLUMNS = [
   "id",
@@ -60,6 +76,21 @@ interface DailyRow {
   day: string;
   minutes: number;
   articles: number;
+}
+
+interface SubscriptionRow {
+  [key: string]: SqlStorageValue;
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+}
+
+interface NotificationRow {
+  [key: string]: SqlStorageValue;
+  enabled: number;
+  reminder_minutes: number;
+  timezone: string;
+  updated_at: number;
 }
 
 export interface StoreContext {
@@ -200,6 +231,38 @@ export class TranslationStore extends DurableObject<Env> {
       `CREATE UNIQUE INDEX IF NOT EXISTS reading_log_unique ON reading_log (day, article_url);`,
     );
     ctx.storage.sql.exec(`CREATE INDEX IF NOT EXISTS reading_log_day ON reading_log (day);`);
+
+    // Daily reminder settings + one row per registered push subscription, and
+    // a per-local-day claim table so an alarm retry can never double-send.
+    ctx.storage.sql.exec(`
+      CREATE TABLE IF NOT EXISTS notification_settings (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        enabled INTEGER NOT NULL DEFAULT 0,
+        reminder_minutes INTEGER NOT NULL,
+        timezone TEXT NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+    `);
+    ctx.storage.sql.exec(`
+      CREATE TABLE IF NOT EXISTS push_subscriptions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        endpoint TEXT NOT NULL,
+        p256dh TEXT NOT NULL,
+        auth TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        last_success_at INTEGER,
+        failure_count INTEGER NOT NULL DEFAULT 0
+      );
+    `);
+    ctx.storage.sql.exec(
+      `CREATE UNIQUE INDEX IF NOT EXISTS push_subscriptions_endpoint ON push_subscriptions (endpoint);`,
+    );
+    ctx.storage.sql.exec(`
+      CREATE TABLE IF NOT EXISTS reminder_log (
+        day TEXT PRIMARY KEY,
+        sent_at INTEGER NOT NULL
+      );
+    `);
   }
 
   /** Look up an existing entry so we can reuse its translation (and skip the API). */
@@ -453,6 +516,186 @@ export class TranslationStore extends DurableObject<Env> {
 
     const today = await this.getDailyProgress(input.day);
     return { counted: !alreadyCounted, today };
+  }
+
+  /** The reader's reminder settings; defaults to off, 20:00 local, UTC. */
+  async getNotificationSettings(): Promise<NotificationSettings> {
+    const row = this.sql
+      .exec<NotificationRow>(
+        `SELECT enabled, reminder_minutes, timezone, updated_at FROM notification_settings WHERE id = 1`,
+      )
+      .toArray()[0];
+    if (!row) {
+      return {
+        enabled: false,
+        reminderMinutes: DEFAULT_REMINDER_MINUTES,
+        timezone: FALLBACK_TIMEZONE,
+      };
+    }
+    return {
+      enabled: Boolean(row.enabled),
+      reminderMinutes: Number(row.reminder_minutes),
+      timezone: row.timezone,
+    };
+  }
+
+  /** Persist the reader's reminder settings. */
+  async setNotificationSettings(
+    input: NotificationSettings,
+    now: number,
+  ): Promise<NotificationSettings> {
+    this.sql.exec(
+      `INSERT INTO notification_settings (id, enabled, reminder_minutes, timezone, updated_at)
+       VALUES (1, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET
+         enabled = excluded.enabled,
+         reminder_minutes = excluded.reminder_minutes,
+         timezone = excluded.timezone,
+         updated_at = excluded.updated_at`,
+      input.enabled ? 1 : 0,
+      input.reminderMinutes,
+      input.timezone,
+      now,
+    );
+    return input;
+  }
+
+  /** Every push subscription for this user (one per browser/device profile). */
+  async listPushSubscriptions(): Promise<StoredPushSubscription[]> {
+    const rows = this.sql
+      .exec<SubscriptionRow>(
+        `SELECT endpoint, p256dh, auth FROM push_subscriptions ORDER BY created_at ASC`,
+      )
+      .toArray();
+    return rows.map((row) => ({ endpoint: row.endpoint, p256dh: row.p256dh, auth: row.auth }));
+  }
+
+  /** Store (or refresh the keys of) a device's push subscription. */
+  async upsertPushSubscription(subscription: StoredPushSubscription, now: number): Promise<void> {
+    this.sql.exec(
+      `INSERT INTO push_subscriptions (endpoint, p256dh, auth, created_at, last_success_at, failure_count)
+       VALUES (?, ?, ?, ?, NULL, 0)
+       ON CONFLICT(endpoint) DO UPDATE SET p256dh = excluded.p256dh, auth = excluded.auth`,
+      subscription.endpoint,
+      subscription.p256dh,
+      subscription.auth,
+      now,
+    );
+  }
+
+  /** Forget a subscription (client opted out, or the push service reported it gone). */
+  async removePushSubscription(endpoint: string): Promise<void> {
+    this.sql.exec(`DELETE FROM push_subscriptions WHERE endpoint = ?`, endpoint);
+  }
+
+  /** Record the outcome of a send so dead endpoints can be spotted later. */
+  async recordPushResult(endpoint: string, delivered: boolean, now: number): Promise<void> {
+    if (delivered) {
+      this.sql.exec(
+        `UPDATE push_subscriptions SET last_success_at = ?, failure_count = 0 WHERE endpoint = ?`,
+        now,
+        endpoint,
+      );
+    } else {
+      this.sql.exec(
+        `UPDATE push_subscriptions SET failure_count = failure_count + 1 WHERE endpoint = ?`,
+        endpoint,
+      );
+    }
+  }
+
+  /** Claim today's reminder. Returns false when one was already sent today. */
+  async markReminderSent(day: string, now: number): Promise<boolean> {
+    const result = this.sql.exec(
+      `INSERT OR IGNORE INTO reminder_log (day, sent_at) VALUES (?, ?)`,
+      day,
+      now,
+    );
+    return result.rowsWritten > 0;
+  }
+
+  /** Send a payload to every subscription, pruning endpoints the service reports gone. */
+  async deliverPush(
+    payload: PushPayload,
+  ): Promise<{ delivered: number; gone: number; failed: number }> {
+    let delivered = 0;
+    let gone = 0;
+    let failed = 0;
+
+    const vapid = vapidFromEnv(this.env);
+    const subscriptions = await this.listPushSubscriptions();
+    if (!vapid || subscriptions.length === 0) return { delivered, gone, failed };
+
+    const now = Date.now();
+    for (const subscription of subscriptions) {
+      const outcome = await sendPush(subscription, payload, vapid);
+      if (outcome === "gone") {
+        gone += 1;
+        await this.removePushSubscription(subscription.endpoint);
+        continue;
+      }
+      await this.recordPushResult(subscription.endpoint, outcome === "delivered", now);
+      if (outcome === "delivered") delivered += 1;
+      else failed += 1;
+    }
+    return { delivered, gone, failed };
+  }
+
+  /** Arm (or clear) the daily reminder alarm for the reader's local time. */
+  async scheduleReminder(from = Date.now()): Promise<void> {
+    const settings = await this.getNotificationSettings();
+    if (!settings.enabled) {
+      await this.ctx.storage.deleteAlarm();
+      return;
+    }
+    await this.ctx.storage.setAlarm(
+      nextReminderAt(from, settings.reminderMinutes, settings.timezone),
+    );
+  }
+
+  /**
+   * Send today's reminder right away when the reader opts in after their local
+   * reminder time has already passed. A no-op before that time.
+   */
+  async maybeSendReminderNow(now = Date.now()): Promise<void> {
+    const settings = await this.getNotificationSettings();
+    if (!settings.enabled) return;
+    if (now < todaysReminderAt(now, settings.reminderMinutes, settings.timezone)) return;
+    await this.runReminder(now);
+  }
+
+  /** Durable Object alarm: deliver today's reminder, then re-arm for tomorrow. */
+  async alarm(): Promise<void> {
+    try {
+      await this.runReminder(Date.now());
+    } catch (error) {
+      console.error("Daily reminder failed", error);
+    } finally {
+      await this.scheduleReminder();
+    }
+  }
+
+  private async runReminder(now: number): Promise<void> {
+    const settings = await this.getNotificationSettings();
+    if (!settings.enabled) return;
+
+    // Don't burn the day's single reminder when there is nowhere to send it.
+    if ((await this.listPushSubscriptions()).length === 0) return;
+
+    const day = localDayKeyInZone(now, settings.timezone);
+    const targetMinutes = await this.getDailyTarget();
+    const today = await this.getDailyProgress(day);
+    if (!shouldRemind({ enabled: true, targetMinutes, minutesToday: today.minutes })) return;
+
+    if (!(await this.markReminderSent(day, now))) return;
+
+    const history = await this.getHistory(day, STREAK_WINDOW_DAYS);
+    const copy = reminderCopy({
+      targetMinutes,
+      minutesToday: today.minutes,
+      streak: computeStreak(history, targetMinutes, day),
+    });
+    await this.deliverPush({ ...copy, url: "/", tag: "daily-reading" });
   }
 
   private insertContext(entryId: number, context: StoreContext, now: number): void {

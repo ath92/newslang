@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import type { DailyProgress } from "../shared/contracts";
+import type { DailyProgress, NotificationSettingsResponse } from "../shared/contracts";
+import { DEFAULT_REMINDER_MINUTES } from "../shared/reminders";
 
 const PRESETS = [5, 10, 15, 20, 30];
 
@@ -8,8 +9,25 @@ interface DailyGoalDialogProps {
   today: DailyProgress | null;
   history: DailyProgress[];
   streak: number;
+  notifications: NotificationSettingsResponse | null;
+  pushSupported: boolean;
   onSave: (minutes: number) => Promise<void> | void;
+  onSetNotificationsEnabled: (enabled: boolean, reminderMinutes: number) => Promise<void>;
+  onSaveReminderTime: (reminderMinutes: number) => Promise<void>;
+  onSendTestNotification: () => Promise<void>;
   onClose: () => void;
+}
+
+function toTimeValue(minutes: number): string {
+  const hours = String(Math.floor(minutes / 60)).padStart(2, "0");
+  const mins = String(minutes % 60).padStart(2, "0");
+  return `${hours}:${mins}`;
+}
+
+function fromTimeValue(value: string): number {
+  const [hours, minutes] = value.split(":").map(Number);
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return DEFAULT_REMINDER_MINUTES;
+  return hours * 60 + minutes;
 }
 
 /** Modal for choosing the daily reading target, with the last week's history. */
@@ -18,13 +36,24 @@ export function DailyGoalDialog({
   today,
   history,
   streak,
+  notifications,
+  pushSupported,
   onSave,
+  onSetNotificationsEnabled,
+  onSaveReminderTime,
+  onSendTestNotification,
   onClose,
 }: DailyGoalDialogProps) {
   const [value, setValue] = useState(targetMinutes);
   const [custom, setCustom] = useState(targetMinutes > 0 && !PRESETS.includes(targetMinutes));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [reminderTime, setReminderTime] = useState(
+    notifications?.reminderMinutes ?? DEFAULT_REMINDER_MINUTES,
+  );
+  const [notificationsOn, setNotificationsOn] = useState(notifications?.enabled ?? false);
+  const [notificationsBusy, setNotificationsBusy] = useState(false);
+  const [notificationStatus, setNotificationStatus] = useState<string | null>(null);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -34,16 +63,52 @@ export function DailyGoalDialog({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [onClose]);
 
+  useEffect(() => {
+    if (!notifications) return;
+    setReminderTime(notifications.reminderMinutes);
+    setNotificationsOn(notifications.enabled);
+  }, [notifications]);
+
   const save = async () => {
     setSaving(true);
     setError(null);
     try {
       await onSave(value);
+      await onSaveReminderTime(reminderTime);
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Errore di salvataggio");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const toggleNotifications = async () => {
+    const next = !notificationsOn;
+    setNotificationsBusy(true);
+    setError(null);
+    setNotificationStatus(null);
+    try {
+      await onSetNotificationsEnabled(next, reminderTime);
+      setNotificationsOn(next);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Errore notifiche");
+    } finally {
+      setNotificationsBusy(false);
+    }
+  };
+
+  const sendTest = async () => {
+    setNotificationsBusy(true);
+    setError(null);
+    setNotificationStatus(null);
+    try {
+      await onSendTestNotification();
+      setNotificationStatus("Notifica di prova inviata.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Errore invio notifica");
+    } finally {
+      setNotificationsBusy(false);
     }
   };
 
@@ -140,6 +205,55 @@ export function DailyGoalDialog({
             </div>
           </div>
         ) : null}
+
+        <section className="goal-reminder">
+          <div className="goal-reminder__head">
+            <div>
+              <h3>Promemoria</h3>
+              <p>Un avviso se a fine giornata non hai ancora letto.</p>
+            </div>
+            <button
+              type="button"
+              className={`toggle${notificationsOn ? " toggle--active" : ""}`}
+              aria-pressed={notificationsOn}
+              onClick={() => void toggleNotifications()}
+              disabled={notificationsBusy || !pushSupported}
+            >
+              {notificationsOn ? "Attivo" : "Disattivo"}
+            </button>
+          </div>
+
+          {!pushSupported ? (
+            <p className="goal-reminder__hint">
+              Le notifiche non sono supportate su questo dispositivo.
+            </p>
+          ) : (
+            <label className="goal-reminder__time">
+              Ora del promemoria
+              <input
+                type="time"
+                value={toTimeValue(reminderTime)}
+                disabled={!notificationsOn || notificationsBusy}
+                onChange={(event) => setReminderTime(fromTimeValue(event.target.value))}
+              />
+            </label>
+          )}
+
+          {notificationsOn ? (
+            <button
+              type="button"
+              className="button button--ghost"
+              onClick={() => void sendTest()}
+              disabled={notificationsBusy}
+            >
+              Invia una notifica di prova
+            </button>
+          ) : null}
+
+          {notificationStatus ? (
+            <p className="goal-reminder__status">{notificationStatus}</p>
+          ) : null}
+        </section>
 
         {error ? <p className="goal-dialog__error">{error}</p> : null}
 

@@ -8,10 +8,29 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import type { DailyProgress, ProgressResponse, RecordReadingResponse } from "../shared/contracts";
+import type {
+  DailyProgress,
+  NotificationSettingsResponse,
+  ProgressResponse,
+  RecordReadingResponse,
+} from "../shared/contracts";
 import { DEFAULT_DAILY_TARGET_MINUTES, HISTORY_DAYS, localDayKey } from "../shared/progress";
-import { fetchProgress, recordReading, setDailyTarget } from "./api";
+import {
+  fetchNotificationSettings,
+  fetchProgress,
+  recordReading,
+  sendTestNotification as sendTestPush,
+  setDailyTarget,
+  updateNotificationSettings,
+} from "./api";
 import { DailyGoalDialog } from "./DailyGoalDialog";
+import {
+  currentTimeZone,
+  disablePush,
+  enablePush,
+  isPushSupported,
+  syncPushSubscription,
+} from "./notifications";
 import { Toast, type ToastMessage } from "./Toast";
 
 interface RecordArticleInput {
@@ -29,6 +48,16 @@ interface ReadingProgressContextValue {
   recordArticle: (input: RecordArticleInput) => Promise<void>;
   /** Change the daily target; `0` turns the goal off. */
   setTarget: (minutes: number) => Promise<void>;
+  /** This device's push/reminder settings (null until loaded). */
+  notifications: NotificationSettingsResponse | null;
+  /** True when this browser can receive Web Push. */
+  pushSupported: boolean;
+  /** Turn the daily reminder on/off (permission + subscription happen here). */
+  setNotificationsEnabled: (enabled: boolean, reminderMinutes: number) => Promise<void>;
+  /** Persist a new reminder time. */
+  saveReminderTime: (reminderMinutes: number) => Promise<void>;
+  /** Send a one-off test notification. */
+  sendTestNotification: () => Promise<void>;
   openGoalDialog: () => void;
 }
 
@@ -69,6 +98,8 @@ function withRecordedDay(
  */
 export function ReadingProgressProvider({ children }: { children: ReactNode }) {
   const [data, setData] = useState<ProgressResponse | null>(null);
+  const [notifications, setNotifications] = useState<NotificationSettingsResponse | null>(null);
+  const [pushSupported] = useState(() => isPushSupported());
   const [goalOpen, setGoalOpen] = useState(false);
   const [toast, setToast] = useState<ToastMessage | null>(null);
   const recorded = useRef(new Set<string>());
@@ -82,6 +113,15 @@ export function ReadingProgressProvider({ children }: { children: ReactNode }) {
       .catch(() => {
         // Progress is non-critical; the app works without it.
       });
+    fetchNotificationSettings()
+      .then((settings) => {
+        if (!cancelled) setNotifications(settings);
+      })
+      .catch(() => {
+        // Notifications are optional; the app works without them.
+      });
+    // Keep the server's subscription copy in sync after a VAPID key rotation.
+    void syncPushSubscription();
     return () => {
       cancelled = true;
     };
@@ -137,6 +177,33 @@ export function ReadingProgressProvider({ children }: { children: ReactNode }) {
   const closeGoalDialog = useCallback(() => setGoalOpen(false), []);
   const dismissToast = useCallback(() => setToast(null), []);
 
+  const setNotificationsEnabled = useCallback(async (enabled: boolean, reminderMinutes: number) => {
+    if (enabled) await enablePush();
+    else await disablePush();
+    const result = await updateNotificationSettings({
+      enabled,
+      reminderMinutes,
+      timezone: currentTimeZone(),
+    });
+    setNotifications(result);
+  }, []);
+
+  const saveReminderTime = useCallback(
+    async (reminderMinutes: number) => {
+      const result = await updateNotificationSettings({
+        enabled: notifications?.enabled ?? false,
+        reminderMinutes,
+        timezone: currentTimeZone(),
+      });
+      setNotifications(result);
+    },
+    [notifications],
+  );
+
+  const sendTestNotification = useCallback(async () => {
+    await sendTestPush();
+  }, []);
+
   const value = useMemo<ReadingProgressContextValue>(
     () => ({
       targetMinutes: data?.targetMinutes ?? DEFAULT_DAILY_TARGET_MINUTES,
@@ -145,9 +212,24 @@ export function ReadingProgressProvider({ children }: { children: ReactNode }) {
       streak: data?.streak ?? 0,
       recordArticle,
       setTarget,
+      notifications,
+      pushSupported,
+      setNotificationsEnabled,
+      saveReminderTime,
+      sendTestNotification,
       openGoalDialog,
     }),
-    [data, recordArticle, setTarget, openGoalDialog],
+    [
+      data,
+      notifications,
+      pushSupported,
+      recordArticle,
+      setTarget,
+      setNotificationsEnabled,
+      saveReminderTime,
+      sendTestNotification,
+      openGoalDialog,
+    ],
   );
 
   return (
@@ -159,7 +241,12 @@ export function ReadingProgressProvider({ children }: { children: ReactNode }) {
           today={value.today}
           history={value.history}
           streak={value.streak}
+          notifications={value.notifications}
+          pushSupported={value.pushSupported}
           onSave={setTarget}
+          onSetNotificationsEnabled={value.setNotificationsEnabled}
+          onSaveReminderTime={value.saveReminderTime}
+          onSendTestNotification={value.sendTestNotification}
           onClose={closeGoalDialog}
         />
       ) : null}

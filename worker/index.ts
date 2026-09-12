@@ -1,6 +1,8 @@
 import { SOURCES, SOURCE_LANG, TARGET_LANG } from "../shared/contracts";
 import type {
+  NotificationSettingsResponse,
   ProgressResponse,
+  PushSubscriptionInput,
   RecordReadingRequest,
   RecordReadingResponse,
   ReviewResult,
@@ -8,6 +10,7 @@ import type {
   SetTargetResponse,
   TranslateRequest,
   TranslationEntry,
+  UpdateNotificationsRequest,
 } from "../shared/contracts";
 import {
   clampDailyTarget,
@@ -20,11 +23,18 @@ import {
   STREAK_WINDOW_DAYS,
 } from "../shared/progress";
 import {
+  clampReminderMinutes,
+  DEFAULT_REMINDER_MINUTES,
+  FALLBACK_TIMEZONE,
+  isValidTimeZone,
+} from "../shared/reminders";
+import {
   normalizePhrase,
   normalizeWhitespace,
   truncateContext,
   MAX_PHRASE_LENGTH,
 } from "../shared/vocab";
+import { vapidFromEnv } from "./push";
 import { fetchHeadlines } from "./rss";
 import { TranslationError, translateText } from "./translation";
 import { resolveIdentity } from "./user";
@@ -72,10 +82,57 @@ function safeArticleUrl(value: unknown): string | undefined {
   }
 }
 
+/** Hosts allowed to receive our push sends. A subscription endpoint is a
+ * client-supplied URL, so an allowlist keeps the Worker from being turned into
+ * an SSRF proxy. See the push-service hosts documented by web-push libraries. */
+const ALLOWED_PUSH_HOSTS = ["fcm.googleapis.com", "push.services.mozilla.com", "push.apple.com"];
+
+function isAllowedPushEndpoint(value: unknown): value is string {
+  if (typeof value !== "string" || value.length === 0 || value.length > 2048) return false;
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return false;
+  }
+  if (url.protocol !== "https:") return false;
+  const host = url.hostname.toLowerCase();
+  return ALLOWED_PUSH_HOSTS.some((allowed) => host === allowed || host.endsWith(`.${allowed}`));
+}
+
+/** Validate a browser-supplied push subscription before storing it. */
+function readPushSubscription(value: unknown): PushSubscriptionInput | null {
+  if (!value || typeof value !== "object") return null;
+  const candidate = value as {
+    endpoint?: unknown;
+    keys?: { p256dh?: unknown; auth?: unknown };
+  };
+  if (!isAllowedPushEndpoint(candidate.endpoint)) return null;
+  const p256dh = candidate.keys?.p256dh;
+  const auth = candidate.keys?.auth;
+  if (typeof p256dh !== "string" || p256dh.length === 0 || p256dh.length > 200) return null;
+  if (typeof auth !== "string" || auth.length === 0 || auth.length > 100) return null;
+  return { endpoint: candidate.endpoint, keys: { p256dh, auth } };
+}
+
 function storeFor(env: Env, userId: string) {
   const namespace = env.TRANSLATION_STORE;
   if (!namespace) throw new Error("TRANSLATION_STORE binding is not configured");
   return namespace.get(namespace.idFromName(userId));
+}
+
+/** Shared shape for the notification settings endpoints. */
+async function notificationsResponse(
+  env: Env,
+  store: ReturnType<typeof storeFor>,
+): Promise<NotificationSettingsResponse> {
+  const settings = await store.getNotificationSettings();
+  const subscriptions = await store.listPushSubscriptions();
+  return {
+    ...settings,
+    vapidPublicKey: env.VAPID_PUBLIC_KEY?.trim() || null,
+    subscribed: subscriptions.length > 0,
+  };
 }
 
 /** Cap how many legacy mock entries we upgrade per request. */
@@ -375,6 +432,74 @@ async function handleApi(request: Request, env: Env, userId: string): Promise<Re
       streak: computeStreak(wide, targetMinutes, today),
     };
     return json(response);
+  }
+
+  if (url.pathname === "/api/notifications" && request.method === "GET") {
+    return json(await notificationsResponse(env, storeFor(env, userId)));
+  }
+
+  if (url.pathname === "/api/notifications" && request.method === "PUT") {
+    const body = await readJson<Partial<UpdateNotificationsRequest>>(request);
+    if (!body || typeof body.enabled !== "boolean") {
+      return json({ error: "`enabled` is required" }, 400);
+    }
+
+    const store = storeFor(env, userId);
+    await store.setNotificationSettings(
+      {
+        enabled: body.enabled,
+        reminderMinutes: clampReminderMinutes(
+          typeof body.reminderMinutes === "number"
+            ? body.reminderMinutes
+            : DEFAULT_REMINDER_MINUTES,
+        ),
+        timezone: isValidTimeZone(body.timezone) ? body.timezone : FALLBACK_TIMEZONE,
+      },
+      Date.now(),
+    );
+    await store.scheduleReminder();
+    // Opting in after today's reminder time delivers the nudge right away.
+    await store.maybeSendReminderNow();
+    return json(await notificationsResponse(env, store));
+  }
+
+  if (url.pathname === "/api/notifications/subscribe" && request.method === "POST") {
+    const subscription = readPushSubscription(await readJson<unknown>(request));
+    if (!subscription) return json({ error: "Invalid push subscription" }, 400);
+    await storeFor(env, userId).upsertPushSubscription(
+      {
+        endpoint: subscription.endpoint,
+        p256dh: subscription.keys.p256dh,
+        auth: subscription.keys.auth,
+      },
+      Date.now(),
+    );
+    return new Response(null, { status: 204 });
+  }
+
+  if (url.pathname === "/api/notifications/unsubscribe" && request.method === "POST") {
+    const body = await readJson<{ endpoint?: unknown }>(request);
+    if (typeof body?.endpoint !== "string" || body.endpoint.length === 0) {
+      return json({ error: "`endpoint` is required" }, 400);
+    }
+    await storeFor(env, userId).removePushSubscription(body.endpoint);
+    return new Response(null, { status: 204 });
+  }
+
+  if (url.pathname === "/api/notifications/test" && request.method === "POST") {
+    if (!vapidFromEnv(env)) {
+      return json({ error: "Push notifications are not configured" }, 503);
+    }
+    const result = await storeFor(env, userId).deliverPush({
+      title: "Notifiche attive 🔔",
+      body: "Riceverai un promemoria se a fine giornata non avrai ancora letto.",
+      url: "/",
+      tag: "notification-test",
+    });
+    if (result.delivered + result.gone + result.failed === 0) {
+      return json({ error: "No push subscription for this device" }, 400);
+    }
+    return json({ ok: true, ...result });
   }
 
   return json({ error: "Not found" }, 404);

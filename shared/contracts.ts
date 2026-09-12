@@ -149,3 +149,39 @@ export interface SetTargetResponse {
   targetMinutes: number;
   streak: number;
 }
+
+/** Per-device daily reminder settings. */
+export interface NotificationSettings {
+  /** Whether the daily reminder is on for this device. */
+  enabled: boolean;
+  /** Local time to remind, as minutes after midnight (e.g. `1200` = 20:00). */
+  reminderMinutes: number;
+  /** IANA timezone, e.g. `"Europe/Rome"`. */
+  timezone: string;
+}
+
+/** A Web Push subscription, as returned by `PushSubscription#toJSON()`. */
+export interface PushSubscriptionInput {
+  endpoint: string;
+  keys: {
+    p256dh: string;
+    auth: string;
+  };
+}
+
+/** Response of `GET`/`PUT /api/notifications`. */
+export interface NotificationSettingsResponse extends NotificationSettings {
+  /** VAPID public key for `pushManager.subscribe`, or null when unconfigured. */
+  vapidPublicKey: string | null;
+  /** True when this device already has a stored push subscription. */
+  subscribed: boolean;
+}
+
+/** Body of `PUT /api/notifications`. */
+export interface UpdateNotificationsRequest {
+  enabled: boolean;
+  /** Minutes after local midnight; defaults to 20:00 when omitted. */
+  reminderMinutes?: number;
+  /** IANA timezone; falls back to UTC when missing or invalid. */
+  timezone?: string;
+}
