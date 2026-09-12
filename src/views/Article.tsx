@@ -71,6 +71,7 @@ export function ArticleView({ url }: { url: string }) {
       {article ? (
         <article className="article__body">
           <header className="article__header">
+            <ReadingProgressBar className="reading-progress--article" />
             {article.siteName ? <span className="article__site">{article.siteName}</span> : null}
             <h1>{article.title}</h1>
             {article.byline || article.readMinutes ? (
@@ -83,7 +84,6 @@ export function ArticleView({ url }: { url: string }) {
               </p>
             ) : null}
             {article.excerpt ? <p className="article__excerpt">{article.excerpt}</p> : null}
-            <ReadingProgressBar className="reading-progress--article" />
             {article.preview ? (
               <p className="article__preview-note">
                 Anteprima — il contenuto completo è riservato agli abbonati.

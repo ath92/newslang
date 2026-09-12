@@ -827,6 +827,11 @@ kbd {
   text-align: center;
 }
 
+.reading-progress--article {
+  margin-top: 0;
+  margin-bottom: 1rem;
+}
+
 .reading-progress__label {
   display: flex;
   align-items: baseline;
