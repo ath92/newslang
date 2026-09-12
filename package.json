@@ -30,6 +30,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "vitest run",
+    "icons": "node scripts/generate-icons.mjs",
     "cf-typegen": "wrangler types"
   },
   "dependencies": {

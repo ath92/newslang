@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { ArticleMetaContext, type ArticleMeta } from "./article-meta";
+import { InstallPrompt } from "./InstallPrompt";
 import { SelectionTranslator } from "./SelectionTranslator";
 import { ArticleView } from "./views/Article";
 import { Home } from "./views/Home";
@@ -36,6 +37,7 @@ export default function App() {
       <ArticleMetaContext.Provider value={value}>
         <RouteSwitch />
         <SelectionTranslator />
+        <InstallPrompt />
       </ArticleMetaContext.Provider>
     </Router>
   );

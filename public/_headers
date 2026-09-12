@@ -1,0 +1,14 @@
+# Cloudflare Workers static-asset headers (see
+# https://developers.cloudflare.com/workers/static-assets/headers/).
+
+# Never cache the service worker, so updates roll out immediately.
+/sw.js
+  Cache-Control: no-cache
+
+# Keep the manifest fresh too.
+/manifest.webmanifest
+  Cache-Control: no-cache
+
+# Vite output is content-hashed: safe to cache forever.
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable

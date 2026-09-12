@@ -730,3 +730,56 @@ kbd {
     justify-content: center;
   }
 }
+
+/* ---------- PWA install prompt ---------- */
+
+.install-prompt {
+  position: fixed;
+  left: 50%;
+  bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: min(440px, calc(100vw - 1.5rem));
+  padding: 0.8rem 0.8rem 0.8rem 1rem;
+  transform: translateX(-50%);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.install-prompt__text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.install-prompt__text strong {
+  font-size: 0.95rem;
+}
+
+.install-prompt__hint {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.install-prompt__close {
+  align-self: flex-start;
+  padding: 0 0.3rem;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  font-size: 1.25rem;
+  line-height: 1.2;
+  cursor: pointer;
+}
+
+.install-prompt .button {
+  white-space: nowrap;
+}

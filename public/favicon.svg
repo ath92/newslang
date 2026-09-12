@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Newslang">
+  <title>Newslang</title>
+  <rect width="64" height="64" rx="14.08" fill="#b02318" />
+  <rect x="13.44" y="8.96" width="37.12" height="46.08" rx="4.8" fill="#faf8f4" />
+  <g fill="#b02318">
+    <rect x="19.38" y="20.61" width="18.17" height="3.2" rx="1.6" />
+    <rect x="19.38" y="27.14" width="25.24" height="3.2" rx="1.6" />
+    <rect x="19.38" y="33.66" width="25.24" height="3.2" rx="1.6" />
+    <rect x="19.38" y="40.19" width="13.13" height="3.2" rx="1.6" />
+  </g>
+</svg>

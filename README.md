@@ -106,6 +106,33 @@ Elements marked with `data-translate-ignore` (and form controls) are skipped, so
 selecting a translation to copy — or the review search box — never triggers a
 new translation.
 
+### Installing as an app (PWA)
+
+Newslang is installable from the browser. `public/manifest.webmanifest` declares
+the name, standalone display, theme colors and icons (192/512 plus a maskable
+variant), and `index.html` carries the manifest link, `theme-color` and the
+`apple-touch-icon`/`apple-mobile-web-app-*` meta tags used by iOS.
+
+`public/sw.js` is a small service worker that keeps the app shell and
+content-hashed build output in a versioned cache, so the app opens offline and
+reloads are fast. It uses network-first for HTML navigations, cache-first for
+`/assets/*`, and never caches `/api/*`. Registration is production-only (see
+`src/main.tsx`).
+
+`src/InstallPrompt.tsx` turns Chromium's `beforeinstallprompt` into an in-app
+"Installa" button and, on iOS (which has no install event), shows the Share →
+"Aggiungi a Home" instructions instead. Dismissal is remembered.
+
+Icons are generated with a dependency-free Node script and committed under
+`public/`; regenerate them with `pnpm icons` after editing
+`scripts/generate-icons.mjs`. `public/_headers` sets `no-cache` on the service
+worker and manifest and a long immutable cache on `/assets/*`; Cloudflare's
+static-asset layer applies these at build, preview and deploy time.
+
+To verify installability, run `pnpm build && pnpm preview` and check DevTools →
+Application → Manifest (the install criteria are listed there), or open the
+deployed site on an Android phone and use _Add to Home screen_.
+
 Vocabulary helpers (whitespace normalization, phrase identity, the review
 scheduler) live in `shared/vocab.ts` and are unit-tested in `test/`.
 
@@ -166,9 +193,10 @@ rewrites the Vite-generated Worker config to point at the staging Worker before
 
 ```
 src/            — the React app (router, views, readability extraction, styles)
+public/         — PWA manifest, service worker, icons, favicon, _headers
 worker/         — the Cloudflare Worker (API + static asset serving)
 shared/         — API contracts shared between the app and the Worker
-scripts/        — build/deploy helpers (pure stdlib, no deps)
+scripts/        — build/deploy helpers + icon generator (pure stdlib, no deps)
 test/           — Vitest specs
 wrangler.jsonc  — Worker config (assets + vars + env.staging)
 ```

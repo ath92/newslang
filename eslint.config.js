@@ -33,6 +33,15 @@ export default tseslint.config(
     },
   },
   {
+    // The service worker is plain JS with service-worker globals.
+    files: ["public/**/*.js"],
+    languageOptions: {
+      globals: {
+        ...globals.serviceworker,
+      },
+    },
+  },
+  {
     // Node build tooling (ESM), not shipped to the browser.
     files: ["scripts/**"],
     languageOptions: {
