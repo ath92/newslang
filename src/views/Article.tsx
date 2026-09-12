@@ -67,7 +67,15 @@ export function ArticleView({ url }: { url: string }) {
           <header className="article__header">
             {article.siteName ? <span className="article__site">{article.siteName}</span> : null}
             <h1>{article.title}</h1>
-            {article.byline ? <p className="article__byline">{article.byline}</p> : null}
+            {article.byline || article.readMinutes ? (
+              <p className="article__byline">
+                {article.byline}
+                {article.byline && article.readMinutes ? " · " : null}
+                {article.readMinutes ? (
+                  <span className="article__read-time">{article.readMinutes} min di lettura</span>
+                ) : null}
+              </p>
+            ) : null}
             {article.excerpt ? <p className="article__excerpt">{article.excerpt}</p> : null}
             {article.preview ? (
               <p className="article__preview-note">

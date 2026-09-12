@@ -251,6 +251,10 @@ a {
   font-size: 0.85rem;
 }
 
+.article__read-time {
+  white-space: nowrap;
+}
+
 .article__excerpt {
   margin: 0.75rem 0 0;
   color: var(--text-muted);

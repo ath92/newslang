@@ -1,4 +1,5 @@
 import { Readability } from "@mozilla/readability";
+import { estimateReadMinutes } from "../shared/reading";
 
 export interface Article {
   title?: string;
@@ -9,6 +10,8 @@ export interface Article {
   /** Plain-text version of the article body. */
   textContent?: string;
   length?: number;
+  /** Estimated reading time in whole minutes. */
+  readMinutes?: number;
   siteName?: string;
   /** True when only a teaser was available (typically a paywalled article). */
   preview?: boolean;
@@ -76,16 +79,16 @@ function escapeHtml(text: string): string {
     .replace(/'/g, "&#39;");
 }
 
-function articleFromReadability(
-  parsed: NonNullable<ReturnType<Readability["parse"]>>,
-): Article {
+function articleFromReadability(parsed: NonNullable<ReturnType<Readability["parse"]>>): Article {
+  const textContent = parsed.textContent ?? undefined;
   return {
     title: parsed.title ?? undefined,
     byline: parsed.byline ?? undefined,
     excerpt: parsed.excerpt ?? undefined,
     content: parsed.content ?? undefined,
-    textContent: parsed.textContent ?? undefined,
+    textContent,
     length: parsed.length ?? undefined,
+    readMinutes: estimateReadMinutes(textContent),
     siteName: parsed.siteName ?? undefined,
   };
 }
@@ -113,7 +116,10 @@ export function extractArticle(html: string): Article | null {
 
   const teaser = jsonLd?.articleBody?.trim();
   if (teaser) {
-    const paragraphs = teaser.split(/\n+/).map((p) => p.trim()).filter(Boolean);
+    const paragraphs = teaser
+      .split(/\n+/)
+      .map((p) => p.trim())
+      .filter(Boolean);
     return {
       title: jsonLd?.headline?.trim() || readable?.title,
       byline: normalizeAuthor(jsonLd?.author) ?? readable?.byline,
@@ -121,6 +127,7 @@ export function extractArticle(html: string): Article | null {
       content: paragraphs.map((p) => `<p>${escapeHtml(p)}</p>`).join(""),
       textContent: teaser,
       length: teaser.length,
+      readMinutes: estimateReadMinutes(teaser),
       siteName: jsonLd?.publisher?.name?.trim() || readable?.siteName,
       preview: true,
     };
