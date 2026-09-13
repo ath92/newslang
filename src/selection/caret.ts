@@ -129,6 +129,25 @@ function textOffsetToRange(block: Element, start: number, end: number): Range | 
 }
 
 /**
+ * True when a viewport point falls inside any of the range's painted boxes.
+ * Used to reject taps in a block's empty whitespace: the caret there collapses
+ * to the end of the nearest word, but the point is not over its text.
+ */
+export function rangeContainsPoint(range: Range, x: number, y: number, slop = 2): boolean {
+  for (const rect of range.getClientRects()) {
+    if (
+      x >= rect.left - slop &&
+      x <= rect.right + slop &&
+      y >= rect.top - slop &&
+      y <= rect.bottom + slop
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
  * Expand a caret Range to the word or sentence that contains it, using the
  * nearest block element as the coordinate space.
  */

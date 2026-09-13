@@ -5,6 +5,7 @@ import {
   describeRange,
   expandRange,
   orderedRange,
+  rangeContainsPoint,
   unionRanges,
 } from "./caret";
 import {
@@ -187,8 +188,10 @@ export function useTextSelection(): TextSelection {
         case "enterDrag": {
           const caret = caretRangeFromPoint(intent.x, intent.y);
           const word = caret ? expandRange(caret, document.body, "word") : null;
-          anchorRangeRef.current = word;
-          commitRange(word);
+          // Holding on empty whitespace seeds nothing, so the drag stays inert.
+          const seed = word && rangeContainsPoint(word, intent.x, intent.y) ? word : null;
+          anchorRangeRef.current = seed;
+          commitRange(seed);
           setDragging(true);
           return;
         }
@@ -209,14 +212,16 @@ export function useTextSelection(): TextSelection {
         case "tap": {
           const caret = caretRangeFromPoint(intent.x, intent.y);
           const word = caret ? expandRange(caret, document.body, "word") : null;
-          if (word) commitRange(word);
+          // A tap in a block's empty whitespace must clear, not grab the
+          // nearest word whose boundary the caret collapsed onto.
+          if (word && rangeContainsPoint(word, intent.x, intent.y)) commitRange(word);
           else clear();
           return;
         }
         case "doubleTap": {
           const caret = caretRangeFromPoint(intent.x, intent.y);
           const sentence = caret ? expandRange(caret, document.body, "sentence") : null;
-          if (sentence) commitRange(sentence);
+          if (sentence && rangeContainsPoint(sentence, intent.x, intent.y)) commitRange(sentence);
           else clear();
           return;
         }
