@@ -1,6 +1,11 @@
 const HIGHLIGHT_NAME = "newslang-selection";
 
-type HighlightCtor = new (...ranges: Range[]) => object;
+type HighlightCtor = new (...ranges: Range[]) => HighlightInstance;
+
+interface HighlightInstance {
+  add(range: Range): void;
+  clear(): void;
+}
 
 interface HighlightRegistry {
   set(name: string, value: object): void;
@@ -24,15 +29,32 @@ export function supportsCustomHighlight(): boolean {
   return Boolean(registry && typeof ctor === "function");
 }
 
+/**
+ * One long-lived Highlight instance, mutated in place. Creating a new Highlight
+ * and re-`set`ting it on every pointer move makes the browser remove the old
+ * highlight before adding the new one, which shows up as a flicker while the
+ * selection is expanding.
+ */
+let highlight: HighlightInstance | null = null;
+let registered = false;
+
 /** Paint (or clear) the shared selection highlight. */
 export function paintHighlight(range: Range | null): void {
   if (!supportsCustomHighlight()) return;
   const registry = (CSS as unknown as HighlightCSS).highlights;
   const ctor = (globalThis as unknown as { Highlight?: HighlightCtor }).Highlight;
   if (!registry || !ctor) return;
+
+  if (!highlight) highlight = new ctor();
+  highlight.clear();
   if (range && range.toString().trim()) {
-    registry.set(HIGHLIGHT_NAME, new ctor(range));
-  } else {
-    registry.delete(HIGHLIGHT_NAME);
+    highlight.add(range);
+  }
+
+  // Register once; subsequent updates are live because the registry holds the
+  // same instance.
+  if (!registered) {
+    registry.set(HIGHLIGHT_NAME, highlight);
+    registered = true;
   }
 }

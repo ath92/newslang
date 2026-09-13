@@ -49,9 +49,48 @@ export interface TextSelection {
 const IGNORE_TARGET =
   "[data-translate-ignore], [data-translate-handle], input, textarea, select, a, button, [role='button']";
 
-function isCoarsePointer(): boolean {
-  if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
-  return window.matchMedia("(pointer: coarse)").matches;
+/** localStorage key (or `?selection=custom|native`) to force the engine on/off. */
+const OVERRIDE_KEY = "newslang.selection";
+
+function readOverride(): boolean | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const param = new URLSearchParams(window.location.search).get("selection");
+    if (param === "custom") return true;
+    if (param === "native") return false;
+    const stored = window.localStorage.getItem(OVERRIDE_KEY);
+    if (stored === "custom") return true;
+    if (stored === "native") return false;
+  } catch {
+    // Private mode / blocked storage: fall through to feature detection.
+  }
+  return null;
+}
+
+/**
+ * Decide whether the custom engine should own selection.
+ *
+ * True on real touch devices and in Chrome DevTools device mode (which reports
+ * `maxTouchPoints` and a mobile user agent, and usually emulates
+ * `pointer: coarse`). Desktop keeps native selection. `?selection=custom` or
+ * `localStorage.setItem("newslang.selection", "custom")` forces it for testing;
+ * `native` forces it off.
+ */
+function detectCustomSelection(): boolean {
+  if (typeof window === "undefined" || typeof navigator === "undefined") return false;
+  if (!supportsCustomHighlight()) return false;
+
+  const override = readOverride();
+  if (override !== null) return override;
+
+  if (window.matchMedia("(pointer: coarse)").matches) return true;
+
+  const touchCapable = navigator.maxTouchPoints > 0 || "ontouchstart" in window;
+  const mobileUA = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+  if (touchCapable && mobileUA) return true;
+  if (window.matchMedia("(any-pointer: coarse)").matches && mobileUA) return true;
+
+  return false;
 }
 
 function isIgnoredTarget(target: EventTarget | null): boolean {
@@ -96,7 +135,16 @@ export function useTextSelection(): TextSelection {
   const handleDragRef = useRef<HandleDrag | null>(null);
 
   useEffect(() => {
-    setActive(supportsCustomHighlight() && isCoarsePointer());
+    const update = () => setActive(detectCustomSelection());
+    update();
+
+    const coarse = window.matchMedia("(pointer: coarse)");
+    coarse.addEventListener?.("change", update);
+    window.addEventListener("resize", update);
+    return () => {
+      coarse.removeEventListener?.("change", update);
+      window.removeEventListener("resize", update);
+    };
   }, []);
 
   useEffect(() => {
@@ -129,6 +177,12 @@ export function useTextSelection(): TextSelection {
     anchorRangeRef.current = null;
     commitRange(null);
   }, [commitRange]);
+
+  // Leaving custom mode (e.g. device emulation toggled off) drops the highlight.
+  useEffect(() => {
+    if (active) return;
+    clear();
+  }, [active, clear]);
 
   const applyIntent = useCallback(
     (intent: GestureIntent) => {

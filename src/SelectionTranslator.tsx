@@ -138,7 +138,7 @@ export function SelectionTranslator() {
 
   return (
     <>
-      {selection && !popover ? (
+      {selection && !popover && !custom.dragging ? (
         <button
           type="button"
           className="translate-trigger"
@@ -157,7 +157,7 @@ export function SelectionTranslator() {
         </button>
       ) : null}
 
-      {custom.active && custom.selection && custom.handles && !popover ? (
+      {custom.active && custom.selection && custom.handles && !popover && !custom.dragging ? (
         <>
           <span
             className="translate-handle translate-handle--start"
