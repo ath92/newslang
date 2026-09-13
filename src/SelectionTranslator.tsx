@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { translateSelection } from "./api";
 import { useArticleMeta } from "./article-meta";
@@ -63,12 +63,41 @@ function popoverStyle(rect: SelectionRect): CSSProperties {
 export function SelectionTranslator() {
   const { meta } = useArticleMeta();
   const { path } = useRouter();
-  const custom = useTextSelection();
   const [nativeSelection, setNativeSelection] = useState<SelectionInfo | null>(null);
   const [popover, setPopover] = useState<TranslatePopover | null>(null);
 
-  const selection = custom.active ? custom.selection : nativeSelection;
+  const custom = useTextSelection({
+    onTap: () => {
+      if (!popover) return false;
+      // Tapping outside an open card behaves like "Chiudi": dismiss and clear.
+      setPopover(null);
+      setNativeSelection(null);
+      window.getSelection()?.removeAllRanges();
+      return true;
+    },
+  });
   const clearCustom = custom.clear;
+
+  const selection = custom.active ? custom.selection : nativeSelection;
+
+  const dismissPopover = useCallback(() => {
+    setPopover(null);
+    setNativeSelection(null);
+    clearCustom();
+    window.getSelection()?.removeAllRanges();
+  }, [clearCustom]);
+
+  // Native (desktop) selection: a click outside the card dismisses it.
+  useEffect(() => {
+    if (custom.active || !popover) return;
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as Element | null;
+      if (target?.closest(".translate-popover")) return;
+      dismissPopover();
+    };
+    document.addEventListener("pointerdown", onPointerDown, true);
+    return () => document.removeEventListener("pointerdown", onPointerDown, true);
+  }, [custom.active, popover, dismissPopover]);
 
   // Native selection only matters when the custom engine is not running.
   useEffect(() => {
@@ -104,26 +133,18 @@ export function SelectionTranslator() {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setPopover(null);
-        setNativeSelection(null);
-        clearCustom();
-      }
+      if (event.key === "Escape") dismissPopover();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [clearCustom]);
+  }, [dismissPopover]);
 
   const handleTranslate = async () => {
     if (!selection) return;
     const { phrase, context, before, after, rect } = selection;
 
-    if (custom.active) {
-      clearCustom();
-    } else {
-      setNativeSelection(null);
-      window.getSelection()?.removeAllRanges();
-    }
+    // Keep the selection highlighted while the card is open; it is cleared
+    // when the card is dismissed.
     setPopover({ status: "loading", phrase, anchor: rect });
 
     try {
@@ -253,7 +274,7 @@ export function SelectionTranslator() {
             <Link to="/review" className="button button--ghost">
               Ripasso →
             </Link>
-            <button type="button" className="button" onClick={() => setPopover(null)}>
+            <button type="button" className="button" onClick={dismissPopover}>
               Chiudi
             </button>
           </div>

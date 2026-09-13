@@ -41,6 +41,15 @@ export interface TextSelection {
   onHandlePointerDown: (edge: "start" | "end", event: ReactPointerEvent) => void;
 }
 
+export interface TextSelectionOptions {
+  /**
+   * Called on a tap (or double-tap) that is not on the translator's own UI.
+   * Return true to consume it: the engine clears its own selection and does
+   * nothing else. Used to dismiss an open translation card with a tap outside.
+   */
+  onTap?: () => boolean;
+}
+
 /**
  * Interactive elements are excluded on touch: a tap there should activate the
  * element, not silently start a translation selection. Form controls and the
@@ -121,11 +130,14 @@ interface HandleDrag {
  * `preventDefault`ed (the listener is non-passive), which keeps iOS from
  * scrolling. Movement before the hold aborts to a normal scroll.
  */
-export function useTextSelection(): TextSelection {
+export function useTextSelection(options: TextSelectionOptions = {}): TextSelection {
   const [active, setActive] = useState(false);
   const [selection, setSelection] = useState<SelectionInfo | null>(null);
   const [handles, setHandles] = useState<SelectionHandles | null>(null);
   const [dragging, setDragging] = useState(false);
+
+  const optionsRef = useRef(options);
+  optionsRef.current = options;
 
   const stateRef = useRef<GestureState>(initialGestureState());
   const rangeRef = useRef<Range | null>(null);
@@ -210,6 +222,10 @@ export function useTextSelection(): TextSelection {
           setDragging(false);
           return;
         case "tap": {
+          if (optionsRef.current.onTap?.()) {
+            clear();
+            return;
+          }
           const caret = caretRangeFromPoint(intent.x, intent.y);
           const word = caret ? expandRange(caret, document.body, "word") : null;
           // A tap in a block's empty whitespace must clear, not grab the
@@ -219,6 +235,10 @@ export function useTextSelection(): TextSelection {
           return;
         }
         case "doubleTap": {
+          if (optionsRef.current.onTap?.()) {
+            clear();
+            return;
+          }
           const caret = caretRangeFromPoint(intent.x, intent.y);
           const sentence = caret ? expandRange(caret, document.body, "sentence") : null;
           if (sentence && rangeContainsPoint(sentence, intent.x, intent.y)) commitRange(sentence);
