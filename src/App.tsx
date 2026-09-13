@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { ArticleMetaContext, type ArticleMeta } from "./article-meta";
 import { InstallPrompt } from "./InstallPrompt";
+import { NotificationPrompt } from "./NotificationPrompt";
 import { ReadingProgressProvider } from "./reading-progress";
 import { SelectionTranslator } from "./SelectionTranslator";
 import { ArticleView } from "./views/Article";
@@ -39,7 +40,10 @@ export default function App() {
         <ReadingProgressProvider>
           <RouteSwitch />
           <SelectionTranslator />
-          <InstallPrompt />
+          <div className="prompt-stack">
+            <InstallPrompt />
+            <NotificationPrompt />
+          </div>
         </ReadingProgressProvider>
       </ArticleMetaContext.Provider>
     </Router>

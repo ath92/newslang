@@ -2,7 +2,8 @@ import { useEffect, useState, type CSSProperties } from "react";
 import { translateSelection } from "./api";
 import { useArticleMeta } from "./article-meta";
 import { Link, useRouter } from "./router";
-import { getSelectionInfo, type SelectionInfo, type SelectionRect } from "./selection";
+import { getSelectionInfo, useTextSelection } from "./selection";
+import type { SelectionInfo, SelectionRect } from "./selection";
 
 interface TranslatePopover {
   status: "loading" | "done" | "error";
@@ -35,35 +36,46 @@ function popoverStyle(rect: SelectionRect): CSSProperties {
 /**
  * Document-wide translation layer.
  *
- * Listens for text selections anywhere in the app — article body, headline,
- * summary, navigation, buttons — and offers a "Traduci" action. The translator's
- * own popover is marked `data-translate-ignore` so its text can be selected and
- * copied without triggering another translation.
+ * On touch devices a custom selection engine (tap = word, double-tap =
+ * sentence, press-and-hold-drag = phrase) replaces the native one, so no OS
+ * edit toolbar appears. Everywhere else the browser's own selection is used.
+ * Either way the translator's popover is marked `data-translate-ignore`, so its
+ * text can be selected and copied without triggering another translation.
  */
 export function SelectionTranslator() {
   const { meta } = useArticleMeta();
   const { path } = useRouter();
-  const [selection, setSelection] = useState<SelectionInfo | null>(null);
+  const custom = useTextSelection();
+  const [nativeSelection, setNativeSelection] = useState<SelectionInfo | null>(null);
   const [popover, setPopover] = useState<TranslatePopover | null>(null);
 
-  // A fresh selection replaces any open translation card, so selecting again
-  // just feels responsive.
+  const selection = custom.active ? custom.selection : nativeSelection;
+  const clearCustom = custom.clear;
+
+  // Native selection only matters when the custom engine is not running.
   useEffect(() => {
+    if (custom.active) return;
     const onSelectionChange = () => {
       const info = getSelectionInfo();
-      setSelection(info);
+      setNativeSelection(info);
       if (info) setPopover(null);
     };
 
     document.addEventListener("selectionchange", onSelectionChange);
     return () => document.removeEventListener("selectionchange", onSelectionChange);
-  }, []);
+  }, [custom.active]);
+
+  // A fresh custom selection replaces any open translation card.
+  useEffect(() => {
+    if (custom.selection) setPopover(null);
+  }, [custom.selection]);
 
   // Navigating away should not leave a stale card floating over the new view.
   useEffect(() => {
-    setSelection(null);
+    setNativeSelection(null);
+    clearCustom();
     setPopover(null);
-  }, [path]);
+  }, [path, clearCustom]);
 
   useEffect(() => {
     if (!popover) return;
@@ -76,19 +88,24 @@ export function SelectionTranslator() {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setPopover(null);
-        setSelection(null);
+        setNativeSelection(null);
+        clearCustom();
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
+  }, [clearCustom]);
 
   const handleTranslate = async () => {
     if (!selection) return;
     const { phrase, context, before, after, rect } = selection;
 
-    setSelection(null);
-    window.getSelection()?.removeAllRanges();
+    if (custom.active) {
+      clearCustom();
+    } else {
+      setNativeSelection(null);
+      window.getSelection()?.removeAllRanges();
+    }
     setPopover({ status: "loading", phrase, anchor: rect });
 
     try {
@@ -138,6 +155,25 @@ export function SelectionTranslator() {
         >
           Traduci
         </button>
+      ) : null}
+
+      {custom.active && custom.selection && custom.handles && !popover ? (
+        <>
+          <span
+            className="translate-handle translate-handle--start"
+            data-translate-handle=""
+            aria-hidden="true"
+            style={{ left: custom.handles.start.x, top: custom.handles.start.y }}
+            onPointerDown={(event) => custom.onHandlePointerDown("start", event)}
+          />
+          <span
+            className="translate-handle translate-handle--end"
+            data-translate-handle=""
+            aria-hidden="true"
+            style={{ left: custom.handles.end.x, top: custom.handles.end.y }}
+            onPointerDown={(event) => custom.onHandlePointerDown("end", event)}
+          />
+        </>
       ) : null}
 
       {popover ? (

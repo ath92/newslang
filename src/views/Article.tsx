@@ -90,8 +90,11 @@ export function ArticleView({ url }: { url: string }) {
               </p>
             ) : null}
           </header>
-          <p className="article__hint">
+          <p className="article__hint article__hint--pointer">
             Seleziona una parola o una frase per tradurla e salvarla nel tuo ripasso.
+          </p>
+          <p className="article__hint article__hint--touch">
+            Tocca una parola per tradurla, due volte per la frase, oppure tieni premuto e trascina.
           </p>
           <div className="article__content" dangerouslySetInnerHTML={{ __html: contentHtml }} />
         </article>

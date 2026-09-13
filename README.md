@@ -160,6 +160,11 @@ Safari only delivers Web Push to a PWA **installed to the Home Screen**
 allowlisted to the real push services (FCM, Mozilla, Apple) so a hostile client
 can't turn the Worker into an SSRF proxy.
 
+Opting in is offered in two places: a small 🔔 on the daily-progress chip
+whenever reminders are off, and a one-time banner. The banner keeps its two
+feedback paths separate — “Non ora” snoozes it for a few days, while “Non
+chiedermelo più” opts out for good — and both are remembered in `localStorage`.
+
 ### Installing as an app (PWA)
 
 Newslang is installable from the browser. `public/manifest.webmanifest` declares

@@ -524,6 +524,71 @@ kbd {
   margin-top: 0.15rem;
 }
 
+/* ---------- Custom touch selection ---------- */
+
+/*
+ * Added to <body> while the custom selection engine is active. Native text
+ * selection (and the OS edit toolbar) is disabled so our own selection is the
+ * only one. `touch-action` is set on the root so double-tap-to-zoom does not
+ * fight the double-tap-to-select-sentence gesture; pinch-zoom still works.
+ */
+body.custom-selection,
+body.custom-selection #root {
+  touch-action: manipulation;
+}
+
+body.custom-selection {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+/* Copying a translation, or typing in a form, still uses native selection. */
+body.custom-selection [data-translate-ignore],
+body.custom-selection input,
+body.custom-selection textarea {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+::highlight(newslang-selection) {
+  background-color: rgba(176, 35, 24, 0.22);
+}
+
+/* Swap the selection hint for its touch wording on coarse pointers. */
+.article__hint--touch {
+  display: none;
+}
+
+.custom-selection .article__hint--touch {
+  display: block;
+}
+
+.custom-selection .article__hint--pointer {
+  display: none;
+}
+
+.translate-handle {
+  position: fixed;
+  z-index: 45;
+  width: 18px;
+  height: 18px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid #fff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+  touch-action: none;
+  cursor: grab;
+}
+
+.translate-handle::after {
+  /* Expand the touch target without changing the visual size. */
+  content: "";
+  position: absolute;
+  inset: -14px;
+}
+
 /* ---------- Review ---------- */
 
 .review {
@@ -737,17 +802,30 @@ kbd {
 
 /* ---------- PWA install prompt ---------- */
 
-.install-prompt {
+/* Bottom stack shared by the install and reminder banners so they never overlap. */
+.prompt-stack {
   position: fixed;
   left: 50%;
   bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
   z-index: 30;
   display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: min(440px, calc(100vw - 1.5rem));
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.prompt-stack > * {
+  pointer-events: auto;
+}
+
+.install-prompt {
+  display: flex;
   align-items: center;
   gap: 0.75rem;
-  width: min(440px, calc(100vw - 1.5rem));
+  width: 100%;
   padding: 0.8rem 0.8rem 0.8rem 1rem;
-  transform: translateX(-50%);
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -786,6 +864,67 @@ kbd {
 
 .install-prompt .button {
   white-space: nowrap;
+}
+
+/* ---------- Reminder opt-in banner ---------- */
+
+.notify-prompt {
+  display: flex;
+  align-items: flex-start;
+  width: 100%;
+  padding: 0.9rem 1rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.notify-prompt__body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.notify-prompt__title {
+  font-size: 0.95rem;
+}
+
+.notify-prompt__text {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.notify-prompt__error {
+  color: var(--accent);
+  font-size: 0.78rem;
+}
+
+.notify-prompt__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.35rem;
+}
+
+.notify-prompt__dismiss {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 0.78rem;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.notify-prompt__dismiss:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 /* ---------- Saved phrase inside a context sentence ---------- */
@@ -843,6 +982,17 @@ kbd {
 .reading-progress__streak {
   color: var(--text-muted);
   font-weight: 500;
+}
+
+.reading-progress__meta {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.4rem;
+}
+
+.reading-progress__bell {
+  font-size: 0.9rem;
+  line-height: 1;
 }
 
 .reading-progress__track {

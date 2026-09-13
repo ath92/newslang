@@ -6,7 +6,7 @@
  * no registration is active.
  */
 
-import type { PushSubscriptionInput } from "../shared/contracts";
+import type { NotificationSettingsResponse, PushSubscriptionInput } from "../shared/contracts";
 import { fetchNotificationSettings, subscribeToPush, unsubscribeFromPush } from "./api";
 
 const DEFAULT_TIMEZONE = "UTC";
@@ -19,6 +19,23 @@ export function isPushSupported(): boolean {
     "PushManager" in window &&
     "Notification" in window
   );
+}
+
+/**
+ * Whether it is worth offering reminders: push works, the server has a VAPID
+ * key, and the reader has not already blocked notifications (a denied
+ * permission can't be re-prompted, so the offer would be a dead end).
+ */
+export function canOfferReminders(
+  settings: NotificationSettingsResponse | null,
+  supported: boolean,
+): boolean {
+  if (!supported || !settings || !settings.vapidPublicKey) return false;
+  try {
+    return Notification.permission !== "denied";
+  } catch {
+    return false;
+  }
 }
 
 /** The reader's IANA timezone, used to schedule the reminder at their local time. */
