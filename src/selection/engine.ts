@@ -154,21 +154,22 @@ export function useTextSelection(): TextSelection {
   }, [active]);
 
   const commitRange = useCallback((range: Range | null) => {
-    rangeRef.current = range;
-    paintHighlight(range);
     if (!range || range.collapsed) {
-      setSelection(null);
-      setHandles(null);
-      return;
-    }
-    const info = describeRange(range, document.body);
-    if (!info) {
       rangeRef.current = null;
       paintHighlight(null);
       setSelection(null);
       setHandles(null);
       return;
     }
+    const info = describeRange(range, document.body);
+    if (!info) {
+      // Layout can report an empty rect for a frame mid-gesture. Keep the
+      // current selection instead of flickering it away; the next valid commit
+      // will catch up.
+      return;
+    }
+    rangeRef.current = range;
+    paintHighlight(range);
     setSelection(info);
     setHandles(computeHandles(info.rects));
   }, []);
@@ -233,6 +234,36 @@ export function useTextSelection(): TextSelection {
     [clear, commitRange],
   );
 
+  // Drag updates are coalesced to one commit per animation frame: a single
+  // gesture can deliver many touchmoves per frame, and repainting the highlight
+  // for each one is what makes the selection flicker.
+  const dragPointRef = useRef<SelectionHandlePoint | null>(null);
+  const dragFrameRef = useRef(0);
+
+  const flushDrag = useCallback(() => {
+    if (dragFrameRef.current) {
+      cancelAnimationFrame(dragFrameRef.current);
+      dragFrameRef.current = 0;
+    }
+    const point = dragPointRef.current;
+    dragPointRef.current = null;
+    if (point) applyIntent({ type: "updateDrag", x: point.x, y: point.y });
+  }, [applyIntent]);
+
+  const scheduleDrag = useCallback(
+    (x: number, y: number) => {
+      dragPointRef.current = { x, y };
+      if (dragFrameRef.current) return;
+      dragFrameRef.current = requestAnimationFrame(() => {
+        dragFrameRef.current = 0;
+        const point = dragPointRef.current;
+        dragPointRef.current = null;
+        if (point) applyIntent({ type: "updateDrag", x: point.x, y: point.y });
+      });
+    },
+    [applyIntent],
+  );
+
   useEffect(() => {
     if (!active) return;
 
@@ -246,7 +277,11 @@ export function useTextSelection(): TextSelection {
     const dispatch = (event: GestureEvent) => {
       const result = reduceGesture(stateRef.current, event, DEFAULT_GESTURE_CONFIG);
       stateRef.current = result.state;
-      applyIntent(result.intent);
+      if (result.intent.type === "updateDrag") {
+        scheduleDrag(result.intent.x, result.intent.y);
+      } else {
+        applyIntent(result.intent);
+      }
       return result;
     };
 
@@ -283,6 +318,7 @@ export function useTextSelection(): TextSelection {
     const onEnd = (event: TouchEvent) => {
       if (handleDragRef.current) return;
       disarmDwell();
+      flushDrag();
       dispatch({ type: "up", t: event.timeStamp || Date.now() });
     };
 
@@ -298,12 +334,13 @@ export function useTextSelection(): TextSelection {
     document.addEventListener("touchcancel", onCancel);
     return () => {
       disarmDwell();
+      if (dragFrameRef.current) cancelAnimationFrame(dragFrameRef.current);
       document.removeEventListener("touchstart", onStart);
       document.removeEventListener("touchmove", onMove);
       document.removeEventListener("touchend", onEnd);
       document.removeEventListener("touchcancel", onCancel);
     };
-  }, [active, applyIntent]);
+  }, [active, applyIntent, scheduleDrag, flushDrag]);
 
   // Keep the trigger and handles aligned with the content while scrolling.
   const hasSelection = selection !== null;
@@ -350,6 +387,7 @@ export function useTextSelection(): TextSelection {
         edge === "start"
           ? { fixedNode: range.endContainer, fixedOffset: range.endOffset }
           : { fixedNode: range.startContainer, fixedOffset: range.startOffset };
+      setDragging(true);
 
       const onPointerMove = (moveEvent: PointerEvent) => {
         const drag = handleDragRef.current;
