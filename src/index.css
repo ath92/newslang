@@ -12,8 +12,16 @@
   box-sizing: border-box;
 }
 
+/*
+ * `touch-action: manipulation` keeps panning and deliberate pinch-zoom (for
+ * accessibility) but drops the double-tap gesture, so a stray double tap never
+ * zooms the page. Pinch remains the intentional way to zoom.
+ */
 html {
   -webkit-text-size-adjust: 100%;
+  touch-action: manipulation;
+  /* Belt-and-braces: nothing may widen the document past the viewport. */
+  overflow-x: clip;
 }
 
 body {
@@ -22,6 +30,18 @@ body {
   color: var(--text);
   font-family: Georgia, "Times New Roman", "Palatino Linotype", serif;
   line-height: 1.6;
+  overflow-x: clip;
+  overflow-wrap: break-word;
+}
+
+/* Scraped media and tables must never push the layout wider than the screen. */
+img,
+svg,
+video,
+canvas,
+iframe,
+table {
+  max-width: 100%;
 }
 
 a {
@@ -275,6 +295,15 @@ a {
 .article__content {
   font-size: 1.08rem;
   line-height: 1.75;
+  /* Long URLs/words in scraped articles must not widen the page. */
+  overflow-wrap: break-word;
+}
+
+.article__content pre,
+.article__content table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
 }
 
 .article__content p {
@@ -529,14 +558,9 @@ kbd {
 /*
  * Added to <body> while the custom selection engine is active. Native text
  * selection (and the OS edit toolbar) is disabled so our own selection is the
- * only one. `touch-action` is set on the root so double-tap-to-zoom does not
- * fight the double-tap-to-select-sentence gesture; pinch-zoom still works.
+ * only one. Double-tap-to-zoom is already suppressed globally by `touch-action`
+ * on the root, so it cannot fight the double-tap-to-select-sentence gesture.
  */
-body.custom-selection,
-body.custom-selection #root {
-  touch-action: manipulation;
-}
-
 body.custom-selection {
   -webkit-user-select: none;
   user-select: none;
@@ -1749,5 +1773,18 @@ body.custom-selection textarea {
   .quiz-progress__fill,
   .quiz-sheet__collapsed-fill {
     transition: none;
+  }
+}
+
+/*
+ * iOS Safari zooms the whole page when a form control with a font size below
+ * 16px receives focus. Keeping controls at 16px on touch devices removes that
+ * accidental zoom without touching the desktop typography.
+ */
+@media (pointer: coarse) {
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea {
+    font-size: 16px;
   }
 }

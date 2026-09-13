@@ -25,8 +25,15 @@ interface TranslatePopover {
 function toolbarStyle(rect: SelectionRect): CSSProperties {
   const viewportTop = rect.top - window.scrollY;
   const placeBelow = viewportTop < 64;
+  // Keep the centred trigger inside the viewport so a selection near either
+  // edge cannot push it (and the page) past the body.
+  const half = 48;
+  const center = rect.left + rect.width / 2;
+  const min = window.scrollX + half + 8;
+  const max = window.scrollX + window.innerWidth - half - 8;
+  const left = max > min ? Math.min(Math.max(center, min), max) : center;
   return {
-    left: rect.left + rect.width / 2,
+    left,
     top: placeBelow ? rect.bottom + 10 : rect.top - 10,
     transform: placeBelow ? "translate(-50%, 0)" : "translate(-50%, -100%)",
   };
