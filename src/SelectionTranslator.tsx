@@ -1,4 +1,5 @@
 import { useEffect, useState, type CSSProperties } from "react";
+import { createPortal } from "react-dom";
 import { translateSelection } from "./api";
 import { useArticleMeta } from "./article-meta";
 import { Link, useRouter } from "./router";
@@ -16,21 +17,35 @@ interface TranslatePopover {
   error?: string;
 }
 
+/**
+ * Position the trigger in document space so it scrolls with the content. It sits
+ * above the selection unless there is not enough room, in which case it flips
+ * below (rather than being clamped to the top of the viewport).
+ */
 function toolbarStyle(rect: SelectionRect): CSSProperties {
-  const left = Math.min(Math.max(rect.left + rect.width / 2, 48), window.innerWidth - 48);
-  return { left, top: Math.max(rect.top - 10, 48) };
+  const viewportTop = rect.top - window.scrollY;
+  const placeBelow = viewportTop < 64;
+  return {
+    left: rect.left + rect.width / 2,
+    top: placeBelow ? rect.bottom + 10 : rect.top - 10,
+    transform: placeBelow ? "translate(-50%, 0)" : "translate(-50%, -100%)",
+  };
 }
 
+/** The popover is viewport-anchored (fixed) and closes on scroll. */
 function popoverStyle(rect: SelectionRect): CSSProperties {
   const width = Math.min(340, window.innerWidth - 24);
+  const viewportLeft = rect.left - window.scrollX;
+  const viewportTop = rect.top - window.scrollY;
+  const viewportBottom = rect.bottom - window.scrollY;
   const left = Math.min(
-    Math.max(rect.left + rect.width / 2 - width / 2, 12),
+    Math.max(viewportLeft + rect.width / 2 - width / 2, 12),
     window.innerWidth - width - 12,
   );
-  const openUp = rect.bottom + 280 > window.innerHeight;
+  const openUp = viewportBottom + 280 > window.innerHeight;
   return openUp
-    ? { left, width, bottom: Math.max(window.innerHeight - rect.top + 10, 12) }
-    : { left, width, top: rect.bottom + 10 };
+    ? { left, width, bottom: Math.max(window.innerHeight - viewportTop + 10, 12) }
+    : { left, width, top: viewportBottom + 10 };
 }
 
 /**
@@ -39,8 +54,11 @@ function popoverStyle(rect: SelectionRect): CSSProperties {
  * On touch devices a custom selection engine (tap = word, double-tap =
  * sentence, press-and-hold-drag = phrase) replaces the native one, so no OS
  * edit toolbar appears. Everywhere else the browser's own selection is used.
- * Either way the translator's popover is marked `data-translate-ignore`, so its
- * text can be selected and copied without triggering another translation.
+ *
+ * The overlay is rendered into a portal on <body> and positioned in document
+ * space: unlike `position: fixed`, that scrolls with the content without lag on
+ * iOS. The highlight is an overlay rather than `::highlight()` because WebKit's
+ * custom-highlight repainting is unreliable on mobile.
  */
 export function SelectionTranslator() {
   const { meta } = useArticleMeta();
@@ -136,8 +154,24 @@ export function SelectionTranslator() {
     }
   };
 
-  return (
+  return createPortal(
     <>
+      {custom.active && selection
+        ? selection.rects.map((rect) => (
+            <span
+              key={`${Math.round(rect.left)}:${Math.round(rect.top)}`}
+              className="translate-highlight"
+              aria-hidden="true"
+              style={{
+                left: rect.left,
+                top: rect.top,
+                width: rect.width,
+                height: rect.height,
+              }}
+            />
+          ))
+        : null}
+
       {selection && !popover && !custom.dragging ? (
         <button
           type="button"
@@ -225,6 +259,7 @@ export function SelectionTranslator() {
           </div>
         </div>
       ) : null}
-    </>
+    </>,
+    document.body,
   );
 }

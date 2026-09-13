@@ -211,11 +211,15 @@ function textAround(range: Range, block: Element): { before: string; after: stri
 }
 
 function toRect(rect: DOMRect | DOMRectReadOnly): SelectionRect {
+  // The overlay is positioned in document space (absolute), so it scrolls with
+  // the content instead of lagging behind like position: fixed does on iOS.
+  const scrollX = window.scrollX;
+  const scrollY = window.scrollY;
   return {
-    top: rect.top,
-    bottom: rect.bottom,
-    left: rect.left,
-    right: rect.right,
+    top: rect.top + scrollY,
+    bottom: rect.bottom + scrollY,
+    left: rect.left + scrollX,
+    right: rect.right + scrollX,
     width: rect.width,
     height: rect.height,
   };

@@ -444,7 +444,7 @@ kbd {
 /* ---------- Translate trigger + popover ---------- */
 
 .translate-trigger {
-  position: fixed;
+  position: absolute;
   z-index: 40;
   transform: translate(-50%, -100%);
   padding: 0.4rem 0.75rem;
@@ -551,8 +551,17 @@ body.custom-selection textarea {
   user-select: text;
 }
 
-::highlight(newslang-selection) {
-  background-color: rgba(176, 35, 24, 0.22);
+/*
+ * Painted from the selection rects in document space. An overlay is used rather
+ * than ::highlight() because WebKit's custom-highlight repainting is unreliable
+ * on mobile, and absolute positioning scrolls with the content (unlike fixed).
+ */
+.translate-highlight {
+  position: absolute;
+  z-index: 35;
+  background-color: rgba(176, 35, 24, 0.25);
+  border-radius: 2px;
+  pointer-events: none;
 }
 
 /* Swap the selection hint for its touch wording on coarse pointers. */
@@ -569,7 +578,7 @@ body.custom-selection textarea {
 }
 
 .translate-handle {
-  position: fixed;
+  position: absolute;
   z-index: 45;
   width: 18px;
   height: 18px;

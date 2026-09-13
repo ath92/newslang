@@ -15,7 +15,6 @@ import {
   type GestureIntent,
   type GestureState,
 } from "./gesture";
-import { paintHighlight, supportsCustomHighlight } from "./highlight";
 import type { SelectionInfo, SelectionRect } from "./types";
 
 export interface SelectionHandlePoint {
@@ -78,7 +77,6 @@ function readOverride(): boolean | null {
  */
 function detectCustomSelection(): boolean {
   if (typeof window === "undefined" || typeof navigator === "undefined") return false;
-  if (!supportsCustomHighlight()) return false;
 
   const override = readOverride();
   if (override !== null) return override;
@@ -156,7 +154,6 @@ export function useTextSelection(): TextSelection {
   const commitRange = useCallback((range: Range | null) => {
     if (!range || range.collapsed) {
       rangeRef.current = null;
-      paintHighlight(null);
       setSelection(null);
       setHandles(null);
       return;
@@ -169,7 +166,6 @@ export function useTextSelection(): TextSelection {
       return;
     }
     rangeRef.current = range;
-    paintHighlight(range);
     setSelection(info);
     setHandles(computeHandles(info.rects));
   }, []);
@@ -342,7 +338,8 @@ export function useTextSelection(): TextSelection {
     };
   }, [active, applyIntent, scheduleDrag, flushDrag]);
 
-  // Keep the trigger and handles aligned with the content while scrolling.
+  // Resize changes text layout, so recompute the document-space rects. Scrolling
+  // needs no work: the overlay is absolutely positioned in document space.
   const hasSelection = selection !== null;
   useEffect(() => {
     if (!active || !hasSelection) return;
@@ -359,11 +356,9 @@ export function useTextSelection(): TextSelection {
     const schedule = () => {
       if (frame === 0) frame = requestAnimationFrame(reposition);
     };
-    window.addEventListener("scroll", schedule, { passive: true });
     window.addEventListener("resize", schedule);
     return () => {
       if (frame) cancelAnimationFrame(frame);
-      window.removeEventListener("scroll", schedule);
       window.removeEventListener("resize", schedule);
     };
   }, [active, hasSelection]);
