@@ -1,8 +1,12 @@
 import { SOURCES, SOURCE_LANG, TARGET_LANG } from "../shared/contracts";
 import type {
+  GenerateQuizRequest,
+  GradeAnswerRequest,
   NotificationSettingsResponse,
   ProgressResponse,
   PushSubscriptionInput,
+  Quiz,
+  QuizMode,
   RecordReadingRequest,
   RecordReadingResponse,
   ReviewResult,
@@ -34,7 +38,9 @@ import {
   truncateContext,
   MAX_PHRASE_LENGTH,
 } from "../shared/vocab";
+import { clampQuestionCount, QUIZ_MAX_ARTICLE_CHARS, validateQuizQuestion } from "../shared/quiz";
 import { vapidFromEnv } from "./push";
+import { generateQuiz, gradeAnswer, QuizError } from "./quiz";
 import { fetchHeadlines } from "./rss";
 import { TranslationError, translateText } from "./translation";
 import { resolveIdentity } from "./user";
@@ -247,6 +253,109 @@ async function handleTranslate(request: Request, env: Env, userId: string): Prom
   return json({ entry, cached: false });
 }
 
+/**
+ * Cheap sliding-window guards so a single user cannot run up an unbounded AI
+ * bill. They are per-isolate (not shared), which is fine as a cost guardrail.
+ */
+const QUIZ_RATE_WINDOW_MS = 60 * 60 * 1000;
+
+function createRateLimiter(limit: number, windowMs: number) {
+  const hits = new Map<string, number[]>();
+  return (userId: string, now: number): boolean => {
+    const recent = (hits.get(userId) ?? []).filter((at) => now - at < windowMs);
+    if (recent.length >= limit) {
+      hits.set(userId, recent);
+      return true;
+    }
+    recent.push(now);
+    hits.set(userId, recent);
+    return false;
+  };
+}
+
+const isQuizRateLimited = createRateLimiter(20, QUIZ_RATE_WINDOW_MS);
+// A single open quiz can need one grading call per question, so allow more.
+const isGradeRateLimited = createRateLimiter(80, QUIZ_RATE_WINDOW_MS);
+
+function readQuizMode(value: unknown): QuizMode {
+  return value === "multiple_choice" || value === "mixed" || value === "open" ? value : "open";
+}
+
+async function handleGenerateQuiz(request: Request, env: Env, userId: string): Promise<Response> {
+  const body = await readJson<Partial<GenerateQuizRequest>>(request);
+  if (!body || typeof body.text !== "string") {
+    return json({ error: "Missing `text` in request body" }, 400);
+  }
+
+  const articleUrl = safeArticleUrl(body.articleUrl);
+  const text = normalizeWhitespace(body.text);
+  if (!articleUrl || !text) {
+    return json({ error: "`articleUrl` and a non-empty `text` are required" }, 400);
+  }
+
+  if (isQuizRateLimited(userId, Date.now())) {
+    return json({ error: "Hai generato troppi quiz. Riprova più tardi." }, 429);
+  }
+
+  const mode = readQuizMode(body.mode);
+  const count = clampQuestionCount(body.count);
+  const title = typeof body.title === "string" ? body.title.slice(0, 300) : undefined;
+
+  try {
+    const draft = await generateQuiz(env, {
+      articleUrl,
+      title,
+      text: text.slice(0, QUIZ_MAX_ARTICLE_CHARS),
+      mode,
+      count,
+      language: "it",
+    });
+    const quiz: Quiz = {
+      id: crypto.randomUUID(),
+      articleUrl,
+      title: title ?? "",
+      language: "it",
+      questions: draft.questions,
+    };
+    return json({ quiz, cached: false });
+  } catch (error) {
+    if (error instanceof QuizError) return json({ error: error.message }, error.status);
+    throw error;
+  }
+}
+
+async function handleGradeAnswer(request: Request, env: Env, userId: string): Promise<Response> {
+  const body = await readJson<Partial<GradeAnswerRequest>>(request);
+  if (!body || typeof body.answer !== "string" || !body.question) {
+    return json({ error: "`question` and `answer` are required" }, 400);
+  }
+
+  const question = validateQuizQuestion(
+    body.question,
+    typeof body.question.id === "string" ? body.question.id : "q1",
+  );
+  if (!question) return json({ error: "Invalid question" }, 400);
+  if (question.type !== "open") {
+    return json({ error: "Only open answers can be graded" }, 400);
+  }
+
+  if (isGradeRateLimited(userId, Date.now())) {
+    return json({ error: "Troppe verifiche. Riprova più tardi." }, 429);
+  }
+
+  try {
+    const result = await gradeAnswer(env, {
+      question,
+      answer: body.answer,
+      language: "it",
+    });
+    return json(result);
+  } catch (error) {
+    if (error instanceof QuizError) return json({ error: error.message }, error.status);
+    throw error;
+  }
+}
+
 async function handleApi(request: Request, env: Env, userId: string): Promise<Response> {
   const url = new URL(request.url);
 
@@ -324,6 +433,14 @@ async function handleApi(request: Request, env: Env, userId: string): Promise<Re
 
   if (url.pathname === "/api/translate" && request.method === "POST") {
     return handleTranslate(request, env, userId);
+  }
+
+  if (url.pathname === "/api/quiz" && request.method === "POST") {
+    return handleGenerateQuiz(request, env, userId);
+  }
+
+  if (url.pathname === "/api/quiz/grade" && request.method === "POST") {
+    return handleGradeAnswer(request, env, userId);
   }
 
   if (url.pathname === "/api/translations" && request.method === "GET") {

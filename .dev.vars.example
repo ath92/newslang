@@ -9,6 +9,14 @@ APP_ENV=development
 # Free/sandbox keys end in `:fx` and use the api-free.deepl.com endpoint.
 DEEPL_API_KEY=
 
+# Article quiz. The Workers AI binding is declared in wrangler.jsonc, so no
+# secret is needed. Set QUIZ_MOCK=true to skip the model and use a deterministic
+# local quiz (useful offline or to avoid burning AI credits in development).
+QUIZ_MOCK=false
+# Optional model overrides (defaults are set in wrangler.jsonc).
+# QUIZ_MODEL=@cf/mistralai/mistral-small-3.1-24b-instruct
+# QUIZ_GRADE_MODEL=@cf/mistralai/mistral-small-3.1-24b-instruct
+
 # Web Push VAPID keys. Generate a dev pair with:
 #   node --input-type=module -e "import {generateVapidKeys} from '@mmmike/web-push/vapid'; console.log(await generateVapidKeys())"
 # The values below are dev-only; generate your own and never reuse them in production.

@@ -4,9 +4,11 @@ import { InstallPrompt } from "./InstallPrompt";
 import { NotificationPrompt } from "./NotificationPrompt";
 import { ReadingProgressProvider } from "./reading-progress";
 import { SelectionTranslator } from "./SelectionTranslator";
+import { SettingsProvider } from "./settings";
 import { ArticleView } from "./views/Article";
 import { Home } from "./views/Home";
 import { Review } from "./views/Review";
+import { Settings } from "./views/Settings";
 import { Router, useRouter } from "./router";
 
 function RouteSwitch() {
@@ -14,6 +16,10 @@ function RouteSwitch() {
 
   if (path === "/review") {
     return <Review />;
+  }
+
+  if (path === "/settings") {
+    return <Settings />;
   }
 
   const match = path.match(/^\/article\/(.+)$/);
@@ -37,14 +43,16 @@ export default function App() {
   return (
     <Router>
       <ArticleMetaContext.Provider value={value}>
-        <ReadingProgressProvider>
-          <RouteSwitch />
-          <SelectionTranslator />
-          <div className="prompt-stack">
-            <InstallPrompt />
-            <NotificationPrompt />
-          </div>
-        </ReadingProgressProvider>
+        <SettingsProvider>
+          <ReadingProgressProvider>
+            <RouteSwitch />
+            <SelectionTranslator />
+            <div className="prompt-stack">
+              <InstallPrompt />
+              <NotificationPrompt />
+            </div>
+          </ReadingProgressProvider>
+        </SettingsProvider>
       </ArticleMetaContext.Provider>
     </Router>
   );

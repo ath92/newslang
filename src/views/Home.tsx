@@ -69,6 +69,9 @@ export function Home() {
       <header className="home__header">
         <div className="home__topline">
           <h1>Newslang</h1>
+          <Link to="/settings" className="nav-link" aria-label="Impostazioni">
+            ⚙️
+          </Link>
           <Link to="/review" className="nav-link">
             Ripasso
           </Link>

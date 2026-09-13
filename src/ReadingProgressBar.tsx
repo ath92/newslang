@@ -1,24 +1,24 @@
 import { progressRatio } from "../shared/progress";
 import { canOfferReminders } from "./notifications";
 import { useReadingProgress } from "./reading-progress";
+import { Link } from "./router";
 
-/** Compact today's-progress chip; tapping it opens the goal dialog. */
+/** Compact today's-progress chip; tapping it opens the settings page. */
 export function ReadingProgressBar({ className = "" }: { className?: string }) {
-  const { targetMinutes, today, streak, openGoalDialog, notifications, pushSupported } =
-    useReadingProgress();
+  const { targetMinutes, today, streak, notifications, pushSupported } = useReadingProgress();
   const extra = className ? ` ${className}` : "";
 
   if (!today) return null;
 
   if (targetMinutes <= 0) {
     return (
-      <button
-        type="button"
+      <Link
+        to="/settings"
         className={`reading-progress reading-progress--unset${extra}`}
-        onClick={openGoalDialog}
+        aria-label="Imposta un obiettivo di lettura"
       >
         Imposta un obiettivo di lettura
-      </button>
+      </Link>
     );
   }
 
@@ -27,10 +27,9 @@ export function ReadingProgressBar({ className = "" }: { className?: string }) {
   const remindersOff = canOfferReminders(notifications, pushSupported) && !notifications?.enabled;
 
   return (
-    <button
-      type="button"
+    <Link
+      to="/settings"
       className={`reading-progress${met ? " reading-progress--met" : ""}${extra}`}
-      onClick={openGoalDialog}
       aria-label={`Obiettivo giornaliero: ${today.minutes} di ${targetMinutes} minuti${
         remindersOff ? ". Promemoria disattivati" : ""
       }`}
@@ -55,6 +54,6 @@ export function ReadingProgressBar({ className = "" }: { className?: string }) {
       <span className="reading-progress__track" aria-hidden="true">
         <span className="reading-progress__fill" style={{ width: `${Math.round(ratio * 100)}%` }} />
       </span>
-    </button>
+    </Link>
   );
 }

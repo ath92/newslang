@@ -12,6 +12,14 @@ interface Env {
   ASSETS: Fetcher;
   /** DeepL API key (set via `wrangler secret put DEEPL_API_KEY`). */
   DEEPL_API_KEY?: string;
+  /** Workers AI binding (declared in wrangler.jsonc as `"ai": { "binding": "AI" }`). */
+  AI?: Ai;
+  /** Workers AI model used to generate quizzes. */
+  QUIZ_MODEL?: string;
+  /** Workers AI model used to grade open answers. */
+  QUIZ_GRADE_MODEL?: string;
+  /** Set to `"true"` in local dev to force the deterministic mock quiz. */
+  QUIZ_MOCK?: string;
   /** Web Push VAPID public key, URL-safe base64 (set via `wrangler secret put`). */
   VAPID_PUBLIC_KEY?: string;
   /** Web Push VAPID private key, URL-safe base64 (set via `wrangler secret put`). */

@@ -23,7 +23,6 @@ import {
   setDailyTarget,
   updateNotificationSettings,
 } from "./api";
-import { DailyGoalDialog } from "./DailyGoalDialog";
 import {
   currentTimeZone,
   disablePush,
@@ -58,7 +57,6 @@ interface ReadingProgressContextValue {
   saveReminderTime: (reminderMinutes: number) => Promise<void>;
   /** Send a one-off test notification. */
   sendTestNotification: () => Promise<void>;
-  openGoalDialog: () => void;
 }
 
 const ReadingProgressContext = createContext<ReadingProgressContextValue | null>(null);
@@ -100,7 +98,6 @@ export function ReadingProgressProvider({ children }: { children: ReactNode }) {
   const [data, setData] = useState<ProgressResponse | null>(null);
   const [notifications, setNotifications] = useState<NotificationSettingsResponse | null>(null);
   const [pushSupported] = useState(() => isPushSupported());
-  const [goalOpen, setGoalOpen] = useState(false);
   const [toast, setToast] = useState<ToastMessage | null>(null);
   const recorded = useRef(new Set<string>());
 
@@ -173,8 +170,6 @@ export function ReadingProgressProvider({ children }: { children: ReactNode }) {
     );
   }, []);
 
-  const openGoalDialog = useCallback(() => setGoalOpen(true), []);
-  const closeGoalDialog = useCallback(() => setGoalOpen(false), []);
   const dismissToast = useCallback(() => setToast(null), []);
 
   const setNotificationsEnabled = useCallback(async (enabled: boolean, reminderMinutes: number) => {
@@ -217,7 +212,6 @@ export function ReadingProgressProvider({ children }: { children: ReactNode }) {
       setNotificationsEnabled,
       saveReminderTime,
       sendTestNotification,
-      openGoalDialog,
     }),
     [
       data,
@@ -228,28 +222,12 @@ export function ReadingProgressProvider({ children }: { children: ReactNode }) {
       setNotificationsEnabled,
       saveReminderTime,
       sendTestNotification,
-      openGoalDialog,
     ],
   );
 
   return (
     <ReadingProgressContext.Provider value={value}>
       {children}
-      {goalOpen ? (
-        <DailyGoalDialog
-          targetMinutes={value.targetMinutes}
-          today={value.today}
-          history={value.history}
-          streak={value.streak}
-          notifications={value.notifications}
-          pushSupported={value.pushSupported}
-          onSave={setTarget}
-          onSetNotificationsEnabled={value.setNotificationsEnabled}
-          onSaveReminderTime={value.saveReminderTime}
-          onSendTestNotification={value.sendTestNotification}
-          onClose={closeGoalDialog}
-        />
-      ) : null}
       <Toast toast={toast} onDismiss={dismissToast} />
     </ReadingProgressContext.Provider>
   );

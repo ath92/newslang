@@ -3,6 +3,10 @@
   "name": "newslang",
   "main": "./worker/index.ts",
   "compatibility_date": "2026-03-01",
+  // Workers AI: quiz generation and open-answer grading.
+  "ai": {
+    "binding": "AI",
+  },
   // One SQLite-backed Durable Object per user. Each instance keeps its own
   // embedded SQLite database of saved translations and their contexts.
   "durable_objects": {
@@ -23,6 +27,9 @@
   "workers_dev": true,
   "vars": {
     "APP_ENV": "production",
+    // Workers AI models for the article quiz (see worker/quiz.ts).
+    "QUIZ_MODEL": "@cf/mistralai/mistral-small-3.1-24b-instruct",
+    "QUIZ_GRADE_MODEL": "@cf/mistralai/mistral-small-3.1-24b-instruct",
     // Contact URI sent to push services with VAPID. The public/private key pair
     // itself is set per environment with `wrangler secret put` (see README).
     "VAPID_SUBJECT": "mailto:hello@newslang.app",

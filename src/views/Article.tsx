@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { fetchArticleHtml } from "../api";
 import { useArticleMeta } from "../article-meta";
+import { QuizPanel } from "../QuizPanel";
 import { ReadingProgressBar } from "../ReadingProgressBar";
 import { useReadingProgress } from "../reading-progress";
 import { extractArticle, type Article } from "../readability";
@@ -10,6 +11,7 @@ import { sanitizeHtml } from "../sanitize";
 export function ArticleView({ url }: { url: string }) {
   const [article, setArticle] = useState<Article | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [quizOpen, setQuizOpen] = useState(false);
   const { setMeta } = useArticleMeta();
   const { recordArticle } = useReadingProgress();
 
@@ -55,10 +57,13 @@ export function ArticleView({ url }: { url: string }) {
   );
 
   return (
-    <main className="article">
+    <main className={`article${quizOpen ? " article--quiz-open" : ""}`}>
       <nav className="article__nav">
         <Link to="/" className="back-link">
           ← Tutte le notizie
+        </Link>
+        <Link to="/settings" className="nav-link" aria-label="Impostazioni">
+          ⚙️
         </Link>
         <Link to="/review" className="nav-link">
           Ripasso
@@ -84,6 +89,15 @@ export function ArticleView({ url }: { url: string }) {
               </p>
             ) : null}
             {article.excerpt ? <p className="article__excerpt">{article.excerpt}</p> : null}
+            {article.textContent ? (
+              <button
+                type="button"
+                className="button button--primary article__quiz-button"
+                onClick={() => setQuizOpen(true)}
+              >
+                🎓 Mettiti alla prova
+              </button>
+            ) : null}
             {article.preview ? (
               <p className="article__preview-note">
                 Anteprima — il contenuto completo è riservato agli abbonati.
@@ -98,6 +112,15 @@ export function ArticleView({ url }: { url: string }) {
           </p>
           <div className="article__content" dangerouslySetInnerHTML={{ __html: contentHtml }} />
         </article>
+      ) : null}
+
+      {quizOpen && article?.textContent ? (
+        <QuizPanel
+          articleUrl={url}
+          title={article.title}
+          text={article.textContent}
+          onClose={() => setQuizOpen(false)}
+        />
       ) : null}
     </main>
   );

@@ -1,4 +1,8 @@
 import type {
+  GenerateQuizRequest,
+  GenerateQuizResponse,
+  GradeAnswerRequest,
+  GradeAnswerResponse,
   Headline,
   NotificationSettingsResponse,
   ProgressResponse,
@@ -79,6 +83,26 @@ export async function deleteTranslation(id: number): Promise<void> {
   if (!response.ok) {
     throw new Error(`Impossibile eliminare la voce (${response.status})`);
   }
+}
+
+/** Generate an article quiz with the LLM. */
+export async function generateQuiz(input: GenerateQuizRequest): Promise<GenerateQuizResponse> {
+  const response = await fetch("/api/quiz", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  return readJson<GenerateQuizResponse>(response);
+}
+
+/** Grade one open answer against the question's reference answer. */
+export async function gradeQuizAnswer(input: GradeAnswerRequest): Promise<GradeAnswerResponse> {
+  const response = await fetch("/api/quiz/grade", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  return readJson<GradeAnswerResponse>(response);
 }
 
 /** Today's reading progress, the 7-day history and the current streak. */

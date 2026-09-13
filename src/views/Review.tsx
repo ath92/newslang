@@ -153,6 +153,9 @@ export function Review() {
         <Link to="/" className="back-link">
           ← Tutte le notizie
         </Link>
+        <Link to="/settings" className="nav-link" aria-label="Impostazioni">
+          ⚙️
+        </Link>
       </nav>
 
       <header className="review__header">
